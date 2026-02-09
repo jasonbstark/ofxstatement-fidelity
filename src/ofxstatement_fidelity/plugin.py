@@ -40,6 +40,12 @@ class FidelityCSVParser(AbstractStatementParser):
         (re.compile(r"^PARTIC CONTR "), "INVBANKTRAN", "CREDIT"),
         (re.compile(r"^PARTIAL DISTRIBUTION "), "INVBANKTRAN", "DEBIT"),
         (re.compile(r"^FED TAX W/H "), "INVBANKTRAN", "DEBIT"),
+ # Begin added by Jason Stark, 2026 02 07
+         (re.compile(r"^BILL PAYMENT "), "INVBANKTRAN", "DEBIT"),
+         (re.compile(r"^Check Paid "), "INVBANKTRAN", "DEBIT"),
+         (re.compile(r"^NORMAL DISTR PARTIAL "), "INVBANKTRAN", "DEBIT"),
+         (re.compile(r"^STATE TAX W/H "), "INVBANKTRAN", "DEBIT"),
+ # End added by Jason Stark, 2026 02 07
     ]
 
     def __init__(self, filename: str) -> None:
@@ -70,31 +76,80 @@ class FidelityCSVParser(AbstractStatementParser):
             return value
 
     def parse_record(self, line):
+        # print(f"FidelityCSVParser:parse_record:entering line = {line}")
         """Parse given transaction line and return StatementLine object"""
-
-        # CSV Column Mapping Reference:
-        # line[0 ] : Run Date
-        # line[1 ] : Action
-        # line[2 ] : Symbol
-        # line[3 ] : Description
-        # line[4 ] : Type
-        # line[5 ] : Price ($)
-        # line[6 ] : Quantity
-        # line[7 ] : Commission ($)
-        # line[8 ] : Fees ($)
-        # line[9 ] : Accrued Interest ($)
-        # line[10] : Amount ($)
-        # line[11] : Cash Balance ($)
-        # line[12] : Settlement Date
 
         # Robustness: Check if the first column is a valid date.
         try:
             date = datetime.strptime(line[0][0:10], "%m/%d/%Y")
         except ValueError:
+            # print(f"FidelityCSVParser:parse_record:returning ValueError: invalid date\n")
             return None
 
         line_length = len(line)
-        if line_length != 13:
+        if line_length == 14:
+            # Fidelity multi-account Activity & Orders csv download
+
+            # CSV Column Mapping Reference:
+            # line[0 ] : Run Date
+            # line[1 ] : Account
+            # line[2 ] : Account Number
+            # line[3 ] : Action
+            # line[4 ] : Symbol
+            # line[5 ] : Description
+            # line[6 ] : Type
+            # line[7 ] : Price ($)
+            # line[8 ] : Quantity
+            # line[9 ] : Commission ($)
+            # line[10] : Fees ($)
+            # line[11] : Accrued Interest ($)
+            # line[12] : Amount ($)
+            # line[13] : Settlement Date
+            RUNDATE = 0
+            ACCOUNT = 1
+            ACCOUNTNUMBER = 2
+            ACTION = 3
+            SYMBOL = 4
+            DESCRIPTION = 5
+            TYPE = 6
+            PRICE = 7
+            QUANTITY = 8
+            COMMISSION = 9
+            FEES = 10
+            ACRRUEDINTEREST = 11
+            AMOUNT = 12
+            SETTLEMENTDATE = 13
+        elif line_length == 13:
+            # Fidelity single account Activity & Orders csv download
+
+            # line[0 ] : Run Date
+            # line[1 ] : Action
+            # line[2 ] : Symbol
+            # line[3 ] : Description
+            # line[4 ] : Type
+            # line[5 ] : Price ($)
+            # line[6 ] : Quantity
+            # line[7 ] : Commission ($)
+            # line[8 ] : Fees ($)
+            # line[9 ] : Accrued Interest ($)
+            # line[10] : Amount ($)
+            # line[11] : Cash Balance ($)
+            # line[12] : Settlement Date
+            RUNDATE = 0
+            ACTION = 1
+            SYMBOL = 2
+            DESCRIPTION = 3
+            TYPE = 4
+            PRICE = 5
+            QUANTITY = 6
+            COMMISSION = 7
+            FEES = 8
+            ACRRUEDINTEREST = 9
+            AMOUNT = 10
+            CASHBALANCE = 11
+            SETTLEMENTDATE = 12
+        else:
+            # print(f"FidelityCSVParser:parse_record:returning line_length != 13\n")
             return None
 
         invest_stmt_line = InvestStatementLine()
@@ -102,24 +157,24 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_stmt_line.date_user = date
 
         # Try to parse settlement date
-        if line[12]:
+        if line[SETTLEMENTDATE]:
             try:
                 invest_stmt_line.date_user = datetime.strptime(
-                    line[12][0:10], "%m/%d/%Y"
+                    line[SETTLEMENTDATE][0:10], "%m/%d/%Y"
                 )
             except ValueError:
                 pass
 
-        invest_stmt_line.memo = line[1]
+        invest_stmt_line.memo = line[ACTION]
 
         # Common fields
-        if line[8]:
-            invest_stmt_line.fees = self.parse_decimal(line[8])
-        if line[10]:
-            invest_stmt_line.amount = self.parse_decimal(line[10])
+        if line[FEES]:
+            invest_stmt_line.fees = self.parse_decimal(line[FEES])
+        if line[AMOUNT]:
+            invest_stmt_line.amount = self.parse_decimal(line[AMOUNT])
 
         # 1. Identify the Transaction Type
-        action = line[1]
+        action = line[ACTION]
         for pattern, trntype, detailed in self.mappings:
             if pattern.match(action):
                 invest_stmt_line.trntype = trntype
@@ -128,16 +183,19 @@ class FidelityCSVParser(AbstractStatementParser):
 
         # 2. Extract Data based on Type
         if invest_stmt_line.trntype in ("BUYSTOCK", "SELLSTOCK"):
-            invest_stmt_line.security_id = line[2]
-            invest_stmt_line.unit_price = self.parse_decimal(line[5])
-            invest_stmt_line.units = self.parse_decimal(line[6])
+            invest_stmt_line.security_id = line[SYMBOL]
+            # invest_stmt_line.unit_price = self.parse_decimal(line[PRICE])
+            # invest_stmt_line.units = self.parse_decimal(line[QUANTITY])
+            invest_stmt_line.units = self.parse_decimal(line[QUANTITY])
+            invest_stmt_line.unit_price = self.parse_decimal(line[AMOUNT]) / self.parse_decimal(line[QUANTITY])
 
         elif (
             invest_stmt_line.trntype == "INCOME"
             and invest_stmt_line.trntype_detailed == "DIV"
         ):
-            invest_stmt_line.security_id = line[2]
+            invest_stmt_line.security_id = line[SYMBOL]
 
+        # print(f"FidelityCSVParser:parse_record:returning return = {invest_stmt_line}\n")
         return invest_stmt_line
 
     def parse(self) -> Statement:
