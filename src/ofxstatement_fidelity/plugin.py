@@ -119,6 +119,7 @@ class FidelityCSVParser(AbstractStatementParser):
             ACRRUEDINTEREST = 11
             AMOUNT = 12
             SETTLEMENTDATE = 13
+
         elif line_length == 13:
             # Fidelity single account Activity & Orders csv download
 
@@ -149,7 +150,6 @@ class FidelityCSVParser(AbstractStatementParser):
             CASHBALANCE = 11
             SETTLEMENTDATE = 12
         else:
-            # print(f"FidelityCSVParser:parse_record:returning line_length != 13\n")
             return None
 
         invest_stmt_line = InvestStatementLine()
@@ -195,7 +195,6 @@ class FidelityCSVParser(AbstractStatementParser):
         ):
             invest_stmt_line.security_id = line[SYMBOL]
 
-        # print(f"FidelityCSVParser:parse_record:returning return = {invest_stmt_line}\n")
         return invest_stmt_line
 
     def parse(self) -> Statement:
@@ -239,7 +238,6 @@ class FidelityCSVParser(AbstractStatementParser):
                 )
 
             return self.statement
-
 
 class IdGenerator:
     """Generates a unique ID based on the date"""
