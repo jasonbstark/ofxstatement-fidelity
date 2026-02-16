@@ -44,11 +44,19 @@ class FidelityCSVParser(AbstractStatementParser):
         (re.compile(r"^PARTIAL DISTRIBUTION "), "INVBANKTRAN", "DEBIT"),
         (re.compile(r"^FED TAX W/H "), "INVBANKTRAN", "DEBIT"),
  # Begin added by Jason Stark, 2026 02 07
+         (re.compile(r"^CASH ADVANCE "), "INVBANKTRAN", "DEBIT"),
+         (re.compile(r"^ADJUST FEE CHARGED ATM FEE REBATE "), "INVBANKTRAN", "CREDIT"),
          (re.compile(r"^BILL PAYMENT "), "INVBANKTRAN", "DEBIT"),
          (re.compile(r"^Check Paid "), "INVBANKTRAN", "DEBIT"),
          (re.compile(r"^NORMAL DISTR PARTIAL "), "INVBANKTRAN", "DEBIT"),
          (re.compile(r"^STATE TAX W/H "), "INVBANKTRAN", "DEBIT"),
  # End added by Jason Stark, 2026 02 07
+    ]
+
+    mappings_account = [
+        (re.compile(r"^X59128643"), "Fidelity:Fidelity X59-128643"),
+        (re.compile(r"^159258482"), "Fidelity:Fidelity 159258482 (Jason)"),
+        (re.compile(r"^352042315"), "Fidelity:Fidelity 352042315 (Elisa)"),
     ]
 
     def __init__(self, filename: str) -> None:
@@ -167,15 +175,21 @@ class FidelityCSVParser(AbstractStatementParser):
             except ValueError:
                 pass
 
-        invest_stmt_line.memo = line[ACTION]
+        invest_stmt_line.memo = line[ACTION].replace("315994103", "FDRXX")
 
         # Common fields
         if line[ACCOUNT]:
             invest_stmt_line.account_type = line[ACCOUNT]
+
         if line[ACCOUNTNUMBER]:
-            invest_stmt_line.account = line[ACCOUNTNUMBER]
+            for pattern, name in self.mappings_account:
+                if pattern.match(line[ACCOUNTNUMBER]):
+                    invest_stmt_line.account = name
+                    break
+
         if line[FEES]:
             invest_stmt_line.fees = self.parse_decimal(line[FEES])
+
         if line[AMOUNT]:
             sign_amount = np.sign(Decimal(line[AMOUNT]))
             invest_stmt_line.amount = self.parse_decimal(line[AMOUNT])
@@ -190,26 +204,19 @@ class FidelityCSVParser(AbstractStatementParser):
 
         # 2. Extract Data based on Type
         if invest_stmt_line.trntype in ("BUYSTOCK", "SELLSTOCK"):
-            if "315994103" in invest_stmt_line.memo:
-                invest_stmt_line.security_id = "FDRXX"
-                invest_stmt_line.memo = invest_stmt_line.memo.replace("315994103", "FDRXX")
-            else:
-                invest_stmt_line.security_id = line[SYMBOL]
-
+            invest_stmt_line.security_id = line[SYMBOL].replace("315994103", "FDRXX")
             invest_stmt_line.units = sign_amount * self.parse_decimal(line[QUANTITY])
             invest_stmt_line.unit_price = Decimal(abs(self.parse_decimal(line[AMOUNT]) / self.parse_decimal(line[QUANTITY]))).quantize(Decimal(10) ** -6)
 
-        elif (
-            invest_stmt_line.trntype == "INCOME"
-            and invest_stmt_line.trntype_detailed == "DIV"
-        ):
-            if "315994103" in invest_stmt_line.memo:
-                invest_stmt_line.security_id = "FDRXX"
-                invest_stmt_line.memo = invest_stmt_line.memo.replace("315994103", "FDRXX")
-            else:
-                invest_stmt_line.security_id = line[SYMBOL]
+        elif (invest_stmt_line.trntype == "INCOME" and invest_stmt_line.trntype_detailed == "DIV"):
+            invest_stmt_line.security_id = line[SYMBOL].replace("315994103", "FDRXX")
             invest_stmt_line.units = self.parse_decimal(line[AMOUNT])
             invest_stmt_line.unit_price = Decimal(1).quantize(Decimal(10) ** -6)
+
+        if ("REINVESTMENT CASH (FDRXX)" in invest_stmt_line.memo) or ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" in invest_stmt_line.memo):
+            # print(f"invest_stmt_line.account = {invest_stmt_line.account}")
+            invest_stmt_line.account = "Income:Dividends:" + invest_stmt_line.account.split(sep=":")[1] + ":FIDELITY CASH RESERVES"
+            # print(f"invest_stmt_line.account = {invest_stmt_line.account}")
 
         return invest_stmt_line
 
@@ -247,6 +254,7 @@ class FidelityCSVParser(AbstractStatementParser):
                 # newer_id = self.id_str_generate(id_string)
 
                 # Now that ID exists, we can validate the line
+                # print(f"invest_line = {invest_line}")
                 invest_line.assert_valid()
 
             if self.statement.invest_lines:
