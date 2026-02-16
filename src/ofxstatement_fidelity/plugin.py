@@ -30,7 +30,7 @@ class FidelityCSVParser(AbstractStatementParser):
     cur_record: int = 0
 
     # Pre-compile regex patterns for performance
-    mappings = [
+    mappings_memo = [
         (re.compile(r"^REINVESTMENT "), "BUYSTOCK", "BUY"),
         (re.compile(r"^DIVIDEND RECEIVED "), "INCOME", "DIV"),
         (re.compile(r"^YOU BOUGHT "), "BUYSTOCK", "BUY"),
@@ -53,13 +53,26 @@ class FidelityCSVParser(AbstractStatementParser):
         (re.compile(r"^STATE TAX W/H "), "INVBANKTRAN", "DEBIT"),
     ]
 
-    mappings_account = [
+    mappings_accounts = [
         (re.compile(r"^X59128643"), "Fidelity:Fidelity X59-128643"),
         (re.compile(r"^159258482"), "Fidelity:Fidelity 159258482 (Jason)"),
         (re.compile(r"^352042315"), "Fidelity:Fidelity 352042315 (Elisa)"),
     ]
 
+    stocks_dict =   {"Fidelity:Fidelity 159258482 (Jason)":  
+                        {
+                            "NVDA": "Fidelity:Fidelity 159258482 (Jason):NVDA", 
+                            "CRWV": "Fidelity:Fidelity 159258482 (Jason):CRWV"
+                        },
+                    "Fidelity:Fidelity 352042315 (Elisa)":  
+                        {
+                            "MCD": "Fidelity:Fidelity 352-042315 (Elisa):MCDONALDS CORP"
+                        },
+                    
+                    }
+
     mortgage_pattern = re.compile(r"^DIRECT DEBIT FREEDOM MTG PYMTS")
+
 
     def __init__(self, filename: str) -> None:
         super().__init__()
@@ -163,7 +176,7 @@ class FidelityCSVParser(AbstractStatementParser):
             invest_stmt_line.account_type = line[ACCOUNT]
 
         if line[ACCOUNTNUMBER]:
-            for pattern, name in self.mappings_account:
+            for pattern, name in self.mappings_accounts:
                 if pattern.match(line[ACCOUNTNUMBER]):
                     invest_stmt_line.account = name
                     break
@@ -177,7 +190,7 @@ class FidelityCSVParser(AbstractStatementParser):
 
         # 1. Identify the Transaction Type
         action = line[ACTION]
-        for pattern, trntype, detailed in self.mappings:
+        for pattern, trntype, detailed in self.mappings_memo:
             if pattern.match(action):
                 invest_stmt_line.trntype = trntype
                 invest_stmt_line.trntype_detailed = detailed
@@ -229,30 +242,31 @@ class FidelityCSVParser(AbstractStatementParser):
             # Generate IDs sequentially after sorting and VALIDATE
             invest_lines = self.statement.invest_lines.copy()
             self.statement.invest_lines = []
+
             for invest_line in invest_lines:
-                print(f"invest_line.date = {invest_line.date}")
                 new_id = self.id_generator.create_id(invest_line.date)
                 invest_line.id = new_id
 
-                mortgage_match = self.mortgage_pattern.match(invest_line.memo)
-                if mortgage_match:
-                    invest_lines = self.buildMortgage(invest_line)
-                    print(f"invest_lines = {invest_lines}")
-                    invest_lines.reverse()
-                    print(f"invest_lines = {invest_lines}")
+                if invest_line.trntype in ("BUYSTOCK", "SELLSTOCK"):
+                    # print(f"invest_line.__dict__ = {invest_line.__dict__}\n")
+                    invest_lines = self.buildStockTransactions(invest_line)
+                    self.statement.invest_lines.extend(invest_lines)
+
+                elif self.mortgage_pattern.match(invest_line.memo):
+                    invest_lines = self.buildMortgageTransactions(invest_line)
                     self.statement.invest_lines.extend(invest_lines)
                     
-                self.statement.invest_lines.append(invest_line)
+                else:
+                    self.statement.invest_lines.append(invest_line)
 
                 # id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + f'{datetime.strftime(invest_line.date, "%Y-%m-%d")}, ' + invest_line.memo + ", " + invest_line.trntype + ", " + invest_line.trntype_detailed
                 # newer_id = self.id_str_generate(id_string)
 
                 # Now that ID exists, we can validate the line
-                # print(f"invest_line = {invest_line}")
                 invest_line.assert_valid()
 
             # reverse the lines to get Chronological Order (Oldest -> Newest)
-            self.statement.invest_lines.reverse()
+            # self.statement.invest_lines.reverse()
 
             if self.statement.invest_lines:
                 self.statement.start_date = min(
@@ -264,7 +278,25 @@ class FidelityCSVParser(AbstractStatementParser):
 
             return self.statement
 
-    def buildMortgage(self, invest_stmt_line):
+    def buildStockTransactions(self, invest_stmt_line):
+        invest_lines = []
+
+        invest_stmt_line_stock = InvestStatementLine()
+        invest_stmt_line_stock.__dict__ = invest_stmt_line.__dict__.copy()
+
+        account = self.stocks_dict[invest_stmt_line_stock.account][invest_stmt_line_stock.security_id]
+        invest_stmt_line_stock.account = account
+        invest_stmt_line_stock.amount = -invest_stmt_line_stock.amount
+
+        invest_stmt_line.unit_price = Decimal(1).quantize(SIXPLACES)
+        invest_stmt_line.units = invest_stmt_line.amount
+
+        invest_lines.append(invest_stmt_line)
+        invest_lines.append(invest_stmt_line_stock)
+
+        return invest_lines
+        
+    def buildMortgageTransactions(self, invest_stmt_line):
         try:
             self.book
         except AttributeError:
@@ -285,7 +317,6 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_stmt_line_principal.account = self.mortgage_account
         invest_stmt_line_principal.amount = mortgage_principal
         invest_stmt_line_principal.units = mortgage_principal
-        invest_lines.append(invest_stmt_line_principal)
         self.mortgage_balance -= mortgage_principal
 
         invest_stmt_line_interest = InvestStatementLine()
@@ -293,15 +324,17 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_stmt_line_interest.account = self.interest_account
         invest_stmt_line_interest.amount = mortgage_interest
         invest_stmt_line_interest.units = mortgage_interest
-        invest_lines.append(invest_stmt_line_interest)
 
         invest_stmt_line_escrow = InvestStatementLine()
         invest_stmt_line_escrow.__dict__ = invest_stmt_line.__dict__.copy()
         invest_stmt_line_escrow.account = self.escrow_account
         invest_stmt_line_escrow.amount = mortgage_escrow
         invest_stmt_line_escrow.units = mortgage_escrow
+
+        invest_lines.append(invest_stmt_line)
+        invest_lines.append(invest_stmt_line_principal)
+        invest_lines.append(invest_stmt_line_interest)
         invest_lines.append(invest_stmt_line_escrow)
-        
         return invest_lines
         
     def provide_pricing(self, invest_line):
