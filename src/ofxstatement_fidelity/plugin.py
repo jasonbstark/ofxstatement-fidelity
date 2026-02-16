@@ -1,6 +1,6 @@
 import csv
 import re
-from datetime import datetime
+from datetime import datetime, date, time, timedelta
 from typing import Dict, Optional, Any, TextIO
 from os import path
 import hashlib
@@ -12,6 +12,8 @@ SIXPLACES = Decimal(10) ** -6
 from ofxstatement.plugin import Plugin
 from ofxstatement.parser import AbstractStatementParser
 from ofxstatement.statement import Statement, InvestStatementLine, StatementLine
+
+from gncxml_integration import Book, copy_gnucash_accounts
 
 class FidelityPlugin(Plugin):
     """Fidelity CSV plugin for ofxstatement"""
@@ -43,14 +45,12 @@ class FidelityCSVParser(AbstractStatementParser):
         (re.compile(r"^PARTIC CONTR "), "INVBANKTRAN", "CREDIT"),
         (re.compile(r"^PARTIAL DISTRIBUTION "), "INVBANKTRAN", "DEBIT"),
         (re.compile(r"^FED TAX W/H "), "INVBANKTRAN", "DEBIT"),
- # Begin added by Jason Stark, 2026 02 07
-         (re.compile(r"^CASH ADVANCE "), "INVBANKTRAN", "DEBIT"),
-         (re.compile(r"^ADJUST FEE CHARGED ATM FEE REBATE "), "INVBANKTRAN", "CREDIT"),
-         (re.compile(r"^BILL PAYMENT "), "INVBANKTRAN", "DEBIT"),
-         (re.compile(r"^Check Paid "), "INVBANKTRAN", "DEBIT"),
-         (re.compile(r"^NORMAL DISTR PARTIAL "), "INVBANKTRAN", "DEBIT"),
-         (re.compile(r"^STATE TAX W/H "), "INVBANKTRAN", "DEBIT"),
- # End added by Jason Stark, 2026 02 07
+        (re.compile(r"^CASH ADVANCE "), "INVBANKTRAN", "DEBIT"),
+        (re.compile(r"^ADJUST FEE CHARGED ATM FEE REBATE "), "INVBANKTRAN", "CREDIT"),
+        (re.compile(r"^BILL PAYMENT "), "INVBANKTRAN", "DEBIT"),
+        (re.compile(r"^Check Paid "), "INVBANKTRAN", "DEBIT"),
+        (re.compile(r"^NORMAL DISTR PARTIAL "), "INVBANKTRAN", "DEBIT"),
+        (re.compile(r"^STATE TAX W/H "), "INVBANKTRAN", "DEBIT"),
     ]
 
     mappings_account = [
@@ -59,6 +59,8 @@ class FidelityCSVParser(AbstractStatementParser):
         (re.compile(r"^352042315"), "Fidelity:Fidelity 352042315 (Elisa)"),
     ]
 
+    mortgage_pattern = re.compile(r"^DIRECT DEBIT FREEDOM MTG PYMTS")
+
     def __init__(self, filename: str) -> None:
         super().__init__()
         self.filename = filename
@@ -66,6 +68,12 @@ class FidelityCSVParser(AbstractStatementParser):
         self.statement.broker_id = "Fidelity"
         self.statement.currency = "USD"
         self.id_generator = IdGenerator()
+
+        self.mortgage_account = "Real Estate:Mortgage Amerisave"
+        self.interest_account = "Interest:Mortgage"
+        self.escrow_account = "Real Estate:Escrow Amerisave"
+        self.mortgage_rate = Decimal(2.75)
+        self.mortgage_principal_interest = Decimal(2570.94)
 
     def parse_datetime(self, value: str) -> datetime:
         return datetime.strptime(value, self.date_format)
@@ -88,27 +96,12 @@ class FidelityCSVParser(AbstractStatementParser):
 
     def parse_record(self, line):
         """Parse given transaction line and return StatementLine object"""
-        # print(f"FidelityCSVParser:parse_record:entering line = {line}")
 
         line_length = len(line)
         if line_length == 14:
+            self.multi_account = True
             # Fidelity multi-account Activity & Orders csv download
 
-            # CSV Column Mapping Reference:
-            # line[0 ] : Run Date
-            # line[1 ] : Account
-            # line[2 ] : Account Number
-            # line[3 ] : Action
-            # line[4 ] : Symbol
-            # line[5 ] : Description
-            # line[6 ] : Type
-            # line[7 ] : Price ($)
-            # line[8 ] : Quantity
-            # line[9 ] : Commission ($)
-            # line[10] : Fees ($)
-            # line[11] : Accrued Interest ($)
-            # line[12] : Amount ($)
-            # line[13] : Settlement Date
             RUNDATE = 0
             ACCOUNT = 1
             ACCOUNTNUMBER = 2
@@ -125,21 +118,9 @@ class FidelityCSVParser(AbstractStatementParser):
             SETTLEMENTDATE = 13
 
         elif line_length == 13:
+            self.multi_account = False
             # Fidelity single account Activity & Orders csv download
 
-            # line[0 ] : Run Date
-            # line[1 ] : Action
-            # line[2 ] : Symbol
-            # line[3 ] : Description
-            # line[4 ] : Type
-            # line[5 ] : Price ($)
-            # line[6 ] : Quantity
-            # line[7 ] : Commission ($)
-            # line[8 ] : Fees ($)
-            # line[9 ] : Accrued Interest ($)
-            # line[10] : Amount ($)
-            # line[11] : Cash Balance ($)
-            # line[12] : Settlement Date
             RUNDATE = 0
             ACTION = 1
             SYMBOL = 2
@@ -214,9 +195,9 @@ class FidelityCSVParser(AbstractStatementParser):
             invest_stmt_line.unit_price = Decimal(1).quantize(Decimal(10) ** -6)
 
         if ("REINVESTMENT CASH (FDRXX)" in invest_stmt_line.memo) or ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" in invest_stmt_line.memo):
-            # print(f"invest_stmt_line.account = {invest_stmt_line.account}")
             invest_stmt_line.account = "Income:Dividends:" + invest_stmt_line.account.split(sep=":")[1] + ":FIDELITY CASH RESERVES"
-            # print(f"invest_stmt_line.account = {invest_stmt_line.account}")
+
+        invest_stmt_line = self.provide_pricing(invest_stmt_line)
 
         return invest_stmt_line
 
@@ -235,20 +216,33 @@ class FidelityCSVParser(AbstractStatementParser):
                     # Note: We do NOT validate here because IDs are assigned later
                     self.statement.invest_lines.append(invest_stmt_line)
 
-            # derive account id from file name
-            match = re.search(
-                r".*History_for_Account_(.*)\.csv", path.basename(self.filename)
-            )
-            if match:
-                self.statement.account_id = match[1]
-
-            # reverse the lines to get Chronological Order (Oldest -> Newest)
-            self.statement.invest_lines.reverse()
+            if self.multi_account:
+                    self.statement.account_id = "multi-account csv file"
+            else:
+                # derive account id from file name
+                match = re.search(
+                    r".*History_for_Account_(.*)\.csv", path.basename(self.filename)
+                )
+                if match:
+                    self.statement.account_id = match[1]
 
             # Generate IDs sequentially after sorting and VALIDATE
-            for invest_line in self.statement.invest_lines:
+            invest_lines = self.statement.invest_lines.copy()
+            self.statement.invest_lines = []
+            for invest_line in invest_lines:
+                print(f"invest_line.date = {invest_line.date}")
                 new_id = self.id_generator.create_id(invest_line.date)
                 invest_line.id = new_id
+
+                mortgage_match = self.mortgage_pattern.match(invest_line.memo)
+                if mortgage_match:
+                    invest_lines = self.buildMortgage(invest_line)
+                    print(f"invest_lines = {invest_lines}")
+                    invest_lines.reverse()
+                    print(f"invest_lines = {invest_lines}")
+                    self.statement.invest_lines.extend(invest_lines)
+                    
+                self.statement.invest_lines.append(invest_line)
 
                 # id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + f'{datetime.strftime(invest_line.date, "%Y-%m-%d")}, ' + invest_line.memo + ", " + invest_line.trntype + ", " + invest_line.trntype_detailed
                 # newer_id = self.id_str_generate(id_string)
@@ -256,6 +250,9 @@ class FidelityCSVParser(AbstractStatementParser):
                 # Now that ID exists, we can validate the line
                 # print(f"invest_line = {invest_line}")
                 invest_line.assert_valid()
+
+            # reverse the lines to get Chronological Order (Oldest -> Newest)
+            self.statement.invest_lines.reverse()
 
             if self.statement.invest_lines:
                 self.statement.start_date = min(
@@ -266,6 +263,75 @@ class FidelityCSVParser(AbstractStatementParser):
                 )
 
             return self.statement
+
+    def buildMortgage(self, invest_stmt_line):
+        try:
+            self.book
+        except AttributeError:
+            self.book = self.initialize_book()
+            self.mortgage_balance = (-self.account_balance(self.book,  self.mortgage_account, invest_stmt_line.date + timedelta(days=-1))).quantize(TWOPLACES)
+
+        invest_lines = []
+        mortgage_payment = -Decimal(invest_stmt_line.amount).quantize(TWOPLACES)
+        mortgage_interest = Decimal(self.mortgage_balance * self.mortgage_rate / 1200).quantize(TWOPLACES)
+        mortgage_principal = (self.mortgage_principal_interest - mortgage_interest).quantize(TWOPLACES)
+        mortgage_escrow = (mortgage_payment - self.mortgage_principal_interest).quantize(TWOPLACES)
+        mortgage_delta = mortgage_payment - mortgage_principal - mortgage_interest - mortgage_escrow
+        if mortgage_delta != Decimal(0):
+            print(f"buildMortgage:  Error, mortgage payment not sum of principal, interest and escrow")
+
+        invest_stmt_line_principal = InvestStatementLine()
+        invest_stmt_line_principal.__dict__ = invest_stmt_line.__dict__.copy()
+        invest_stmt_line_principal.account = self.mortgage_account
+        invest_stmt_line_principal.amount = mortgage_principal
+        invest_stmt_line_principal.units = mortgage_principal
+        invest_lines.append(invest_stmt_line_principal)
+        self.mortgage_balance -= mortgage_principal
+
+        invest_stmt_line_interest = InvestStatementLine()
+        invest_stmt_line_interest.__dict__ = invest_stmt_line.__dict__.copy()
+        invest_stmt_line_interest.account = self.interest_account
+        invest_stmt_line_interest.amount = mortgage_interest
+        invest_stmt_line_interest.units = mortgage_interest
+        invest_lines.append(invest_stmt_line_interest)
+
+        invest_stmt_line_escrow = InvestStatementLine()
+        invest_stmt_line_escrow.__dict__ = invest_stmt_line.__dict__.copy()
+        invest_stmt_line_escrow.account = self.escrow_account
+        invest_stmt_line_escrow.amount = mortgage_escrow
+        invest_stmt_line_escrow.units = mortgage_escrow
+        invest_lines.append(invest_stmt_line_escrow)
+        
+        return invest_lines
+        
+    def provide_pricing(self, invest_line):
+        if invest_line.unit_price is None:
+            invest_line.unit_price = Decimal(1).quantize(SIXPLACES)
+            invest_line.units = invest_line.amount
+
+        return invest_line
+
+    def initialize_book(self) -> Book:
+        bookname = copy_gnucash_accounts()
+
+        try:
+            book = Book(bookname)
+        except OSError as err:
+            sys.exit(err)
+
+        return book
+
+    def account_balance(self, book, account, date = None):
+        id = book.accounts[book.accounts['path'] == account].index.values[0][1]
+        splits = book.splits[book.splits['act_id'] == id].sort_values(by='trn_date')
+        splits['balance'] = splits['value'].cumsum()
+    
+        if date is None:
+            balance = splits['balance'].iloc[-1]
+        else:
+            balance = splits[splits['trn_date'] <= date]['balance'].iloc[-1]
+
+        return balance
 
     def id_str_generate(self, seed=""):
         m = hashlib.sha256(seed.encode('utf-8'))
