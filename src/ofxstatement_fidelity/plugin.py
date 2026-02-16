@@ -1,10 +1,13 @@
 import csv
 import re
-from decimal import Decimal, Decimal as D
 from datetime import datetime
 from typing import Dict, Optional, Any, TextIO
 from os import path
 import hashlib
+import numpy as np
+from decimal import Decimal
+TWOPLACES = Decimal(10) ** -2
+SIXPLACES = Decimal(10) ** -6
 
 from ofxstatement.plugin import Plugin
 from ofxstatement.parser import AbstractStatementParser
@@ -59,9 +62,9 @@ class FidelityCSVParser(AbstractStatementParser):
     def parse_datetime(self, value: str) -> datetime:
         return datetime.strptime(value, self.date_format)
 
-    def parse_decimal(self, value: str) -> D:
+    def parse_decimal(self, value: str) -> Decimal:
         # Remove thousand separators for US format (1,234.56 -> 1234.56)
-        return D(value.replace(",", "").replace(" ", ""))
+        return Decimal(value.replace(",", "").replace(" ", ""))
 
     def parse_value(self, value: Optional[str], field: str) -> Any:
         tp = StatementLine.__annotations__.get(field)
@@ -174,6 +177,7 @@ class FidelityCSVParser(AbstractStatementParser):
         if line[FEES]:
             invest_stmt_line.fees = self.parse_decimal(line[FEES])
         if line[AMOUNT]:
+            sign_amount = np.sign(Decimal(line[AMOUNT]))
             invest_stmt_line.amount = self.parse_decimal(line[AMOUNT])
 
         # 1. Identify the Transaction Type
@@ -186,27 +190,26 @@ class FidelityCSVParser(AbstractStatementParser):
 
         # 2. Extract Data based on Type
         if invest_stmt_line.trntype in ("BUYSTOCK", "SELLSTOCK"):
-            # invest_stmt_line.unit_price = self.parse_decimal(line[PRICE])
-            # invest_stmt_line.units = self.parse_decimal(line[QUANTITY])
-            # invest_stmt_line.unit_price = self.parse_decimal(line[AMOUNT]) / self.parse_decimal(line[QUANTITY])
-
-            if line[SYMBOL] == "315994103":
+            if "315994103" in invest_stmt_line.memo:
                 invest_stmt_line.security_id = "FDRXX"
+                invest_stmt_line.memo = invest_stmt_line.memo.replace("315994103", "FDRXX")
             else:
                 invest_stmt_line.security_id = line[SYMBOL]
 
-            invest_stmt_line.units = self.parse_decimal(line[QUANTITY])
-            invest_stmt_line.unit_price = D(self.parse_decimal(line[AMOUNT]) / self.parse_decimal(line[QUANTITY])).quantize(Decimal(10) ** -6)
+            invest_stmt_line.units = sign_amount * self.parse_decimal(line[QUANTITY])
+            invest_stmt_line.unit_price = Decimal(abs(self.parse_decimal(line[AMOUNT]) / self.parse_decimal(line[QUANTITY]))).quantize(Decimal(10) ** -6)
 
         elif (
             invest_stmt_line.trntype == "INCOME"
             and invest_stmt_line.trntype_detailed == "DIV"
         ):
-            # if self.interest_315994103_pattern.match(action):
-            if line[SYMBOL] == "315994103":
+            if "315994103" in invest_stmt_line.memo:
                 invest_stmt_line.security_id = "FDRXX"
+                invest_stmt_line.memo = invest_stmt_line.memo.replace("315994103", "FDRXX")
             else:
                 invest_stmt_line.security_id = line[SYMBOL]
+            invest_stmt_line.units = self.parse_decimal(line[AMOUNT])
+            invest_stmt_line.unit_price = Decimal(1).quantize(Decimal(10) ** -6)
 
         return invest_stmt_line
 
