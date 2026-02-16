@@ -4,11 +4,11 @@ from decimal import Decimal, Decimal as D
 from datetime import datetime
 from typing import Dict, Optional, Any, TextIO
 from os import path
+import hashlib
 
 from ofxstatement.plugin import Plugin
 from ofxstatement.parser import AbstractStatementParser
 from ofxstatement.statement import Statement, InvestStatementLine, StatementLine
-
 
 class FidelityPlugin(Plugin):
     """Fidelity CSV plugin for ofxstatement"""
@@ -76,15 +76,8 @@ class FidelityCSVParser(AbstractStatementParser):
             return value
 
     def parse_record(self, line):
-        # print(f"FidelityCSVParser:parse_record:entering line = {line}")
         """Parse given transaction line and return StatementLine object"""
-
-        # Robustness: Check if the first column is a valid date.
-        try:
-            date = datetime.strptime(line[0][0:10], "%m/%d/%Y")
-        except ValueError:
-            # print(f"FidelityCSVParser:parse_record:returning ValueError: invalid date\n")
-            return None
+        # print(f"FidelityCSVParser:parse_record:entering line = {line}")
 
         line_length = len(line)
         if line_length == 14:
@@ -152,6 +145,12 @@ class FidelityCSVParser(AbstractStatementParser):
         else:
             return None
 
+        # Robustness: Check if the first column is a valid date.
+        try:
+            date = datetime.strptime(line[RUNDATE][0:10], "%m/%d/%Y")
+        except ValueError:
+            return None
+
         invest_stmt_line = InvestStatementLine()
         invest_stmt_line.date = date
         invest_stmt_line.date_user = date
@@ -168,6 +167,10 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_stmt_line.memo = line[ACTION]
 
         # Common fields
+        if line[ACCOUNT]:
+            invest_stmt_line.account_type = line[ACCOUNT]
+        if line[ACCOUNTNUMBER]:
+            invest_stmt_line.account = line[ACCOUNTNUMBER]
         if line[FEES]:
             invest_stmt_line.fees = self.parse_decimal(line[FEES])
         if line[AMOUNT]:
@@ -183,11 +186,13 @@ class FidelityCSVParser(AbstractStatementParser):
 
         # 2. Extract Data based on Type
         if invest_stmt_line.trntype in ("BUYSTOCK", "SELLSTOCK"):
-            invest_stmt_line.security_id = line[SYMBOL]
             # invest_stmt_line.unit_price = self.parse_decimal(line[PRICE])
             # invest_stmt_line.units = self.parse_decimal(line[QUANTITY])
+            # invest_stmt_line.unit_price = self.parse_decimal(line[AMOUNT]) / self.parse_decimal(line[QUANTITY])
+
+            invest_stmt_line.security_id = line[SYMBOL]
             invest_stmt_line.units = self.parse_decimal(line[QUANTITY])
-            invest_stmt_line.unit_price = self.parse_decimal(line[AMOUNT]) / self.parse_decimal(line[QUANTITY])
+            invest_stmt_line.unit_price = D(self.parse_decimal(line[AMOUNT]) / self.parse_decimal(line[QUANTITY])).quantize(Decimal(10) ** -6)
 
         elif (
             invest_stmt_line.trntype == "INCOME"
@@ -226,6 +231,10 @@ class FidelityCSVParser(AbstractStatementParser):
             for invest_line in self.statement.invest_lines:
                 new_id = self.id_generator.create_id(invest_line.date)
                 invest_line.id = new_id
+
+                # id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + f'{datetime.strftime(invest_line.date, "%Y-%m-%d")}, ' + invest_line.memo + ", " + invest_line.trntype + ", " + invest_line.trntype_detailed
+                # newer_id = self.id_str_generate(id_string)
+
                 # Now that ID exists, we can validate the line
                 invest_line.assert_valid()
 
@@ -239,6 +248,11 @@ class FidelityCSVParser(AbstractStatementParser):
 
             return self.statement
 
+    def id_str_generate(self, seed=""):
+        m = hashlib.sha256(seed.encode('utf-8'))
+        str_hash = m.hexdigest()[0:32]
+        return str_hash
+
 class IdGenerator:
     """Generates a unique ID based on the date"""
 
@@ -248,3 +262,4 @@ class IdGenerator:
     def create_id(self, date) -> str:
         self.date_count[date] = self.date_count.get(date, 0) + 1
         return f'{datetime.strftime(date, "%Y%m%d")}-{self.date_count[date]}'
+
