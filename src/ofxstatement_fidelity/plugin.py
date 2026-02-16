@@ -35,7 +35,7 @@ class FidelityCSVParser(AbstractStatementParser):
         (re.compile(r"^TRANSFERRED FROM "), "INVBANKTRAN", "CREDIT"),
         (re.compile(r"^TRANSFERRED TO "), "INVBANKTRAN", "DEBIT"),
         (re.compile(r"^DIRECT DEPOSIT "), "INVBANKTRAN", "CREDIT"),
-        (re.compile(r"^INTEREST EARNED "), "INVBANKTRAN", "CREDIT"),
+        (re.compile(r"^INTEREST EARNED "), "INCOME", "DIV"),
         (re.compile(r"^CONTRIBUTION "), "INVBANKTRAN", "CREDIT"),
         (re.compile(r"^PARTIC CONTR "), "INVBANKTRAN", "CREDIT"),
         (re.compile(r"^PARTIAL DISTRIBUTION "), "INVBANKTRAN", "DEBIT"),
@@ -190,7 +190,11 @@ class FidelityCSVParser(AbstractStatementParser):
             # invest_stmt_line.units = self.parse_decimal(line[QUANTITY])
             # invest_stmt_line.unit_price = self.parse_decimal(line[AMOUNT]) / self.parse_decimal(line[QUANTITY])
 
-            invest_stmt_line.security_id = line[SYMBOL]
+            if line[SYMBOL] == "315994103":
+                invest_stmt_line.security_id = "FDRXX"
+            else:
+                invest_stmt_line.security_id = line[SYMBOL]
+
             invest_stmt_line.units = self.parse_decimal(line[QUANTITY])
             invest_stmt_line.unit_price = D(self.parse_decimal(line[AMOUNT]) / self.parse_decimal(line[QUANTITY])).quantize(Decimal(10) ** -6)
 
@@ -198,7 +202,11 @@ class FidelityCSVParser(AbstractStatementParser):
             invest_stmt_line.trntype == "INCOME"
             and invest_stmt_line.trntype_detailed == "DIV"
         ):
-            invest_stmt_line.security_id = line[SYMBOL]
+            # if self.interest_315994103_pattern.match(action):
+            if line[SYMBOL] == "315994103":
+                invest_stmt_line.security_id = "FDRXX"
+            else:
+                invest_stmt_line.security_id = line[SYMBOL]
 
         return invest_stmt_line
 
