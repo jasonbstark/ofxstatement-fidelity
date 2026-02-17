@@ -237,7 +237,7 @@ class FidelityCSVParser(AbstractStatementParser):
                     self.statement.invest_lines.extend(invest_stmt_lines)
 
             if self.multi_account:
-                    self.statement.account_id = "multi-account csv file"
+                self.statement.account_id = "multi-account csv file"
             else:
                 match = re.search(
                     r".*History_for_Account_(.*)\.csv", path.basename(self.filename)
@@ -249,27 +249,7 @@ class FidelityCSVParser(AbstractStatementParser):
 
             self.process_transfers()
 
-            self.statement.invest_lines = []
-            for index, row in self.df_statement.iterrows():
-                invest_stmt_line = InvestStatementLine()
-                invest_stmt_line.date = row['date']
-                invest_stmt_line.account = row['account']
-                invest_stmt_line.memo = row['memo']
-                invest_stmt_line.security_id = row['security_id']
-                invest_stmt_line.units = row['units']
-                invest_stmt_line.unit_price = row['unit_price']
-                invest_stmt_line.amount = row['amount']
-                invest_stmt_line.id_trx = row['id_trx']
-                invest_stmt_line.id_split = row['id_split']
-                invest_stmt_line.trntype = row['trntype']
-                invest_stmt_line.trntype_detailed = row['trntype_detailed']
-                invest_stmt_line.account_type = row['account_type']
-
-                id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
-                invest_stmt_line.id_split = self.id_str_generate(id_string)
-                invest_stmt_line.assert_valid()
-
-                self.statement.invest_lines.append(invest_stmt_line)
+            self.df_to_statement()
 
             self.statement.invest_lines.reverse()
 
@@ -283,6 +263,29 @@ class FidelityCSVParser(AbstractStatementParser):
 
             return self.statement
 
+    def df_to_statement(self):
+        self.statement.invest_lines = []
+        for index, row in self.df_statement.iterrows():
+            invest_stmt_line = InvestStatementLine()
+            invest_stmt_line.date = row['date']
+            invest_stmt_line.account = row['account']
+            invest_stmt_line.memo = row['memo']
+            invest_stmt_line.security_id = row['security_id']
+            invest_stmt_line.units = row['units']
+            invest_stmt_line.unit_price = row['unit_price']
+            invest_stmt_line.amount = row['amount']
+            invest_stmt_line.id_trx = row['id_trx']
+            invest_stmt_line.id_split = row['id_split']
+            invest_stmt_line.trntype = row['trntype']
+            invest_stmt_line.trntype_detailed = row['trntype_detailed']
+            invest_stmt_line.account_type = row['account_type']
+
+            id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
+            invest_stmt_line.id_split = self.id_str_generate(id_string)
+            invest_stmt_line.assert_valid()
+
+            self.statement.invest_lines.append(invest_stmt_line)
+        
     def statement_to_df(self):
         ld = []
         for line in self.statement.invest_lines:
