@@ -243,19 +243,21 @@ class FidelityCSVParser(AbstractStatementParser):
             invest_lines = self.statement.invest_lines.copy()
             self.statement.invest_lines = []
 
-            for invest_line in invest_lines:
+            invest_lines_reversed = invest_lines.copy()
+            invest_lines_reversed.reverse()
+            for invest_line in invest_lines_reversed:
                 new_id = self.id_generator.create_id(invest_line.date)
                 invest_line.id = new_id
 
-                if invest_line.trntype in ("BUYSTOCK", "SELLSTOCK"):
+                if self.mortgage_pattern.match(invest_line.memo):
+                    invest_lines = self.buildMortgageTransactions(invest_line)
+                    self.statement.invest_lines.extend(invest_lines)
+                    
+                elif (invest_line.trntype in ("BUYSTOCK", "SELLSTOCK")) and ("REINVESTMENT CASH (FDRXX)" not in invest_line.memo):
                     # print(f"invest_line.__dict__ = {invest_line.__dict__}\n")
                     invest_lines = self.buildStockTransactions(invest_line)
                     self.statement.invest_lines.extend(invest_lines)
 
-                elif self.mortgage_pattern.match(invest_line.memo):
-                    invest_lines = self.buildMortgageTransactions(invest_line)
-                    self.statement.invest_lines.extend(invest_lines)
-                    
                 else:
                     self.statement.invest_lines.append(invest_line)
 
@@ -266,7 +268,7 @@ class FidelityCSVParser(AbstractStatementParser):
                 invest_line.assert_valid()
 
             # reverse the lines to get Chronological Order (Oldest -> Newest)
-            # self.statement.invest_lines.reverse()
+            self.statement.invest_lines.reverse()
 
             if self.statement.invest_lines:
                 self.statement.start_date = min(
@@ -294,6 +296,7 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_lines.append(invest_stmt_line)
         invest_lines.append(invest_stmt_line_stock)
 
+        invest_lines.reverse()
         return invest_lines
         
     def buildMortgageTransactions(self, invest_stmt_line):
@@ -314,6 +317,8 @@ class FidelityCSVParser(AbstractStatementParser):
 
         invest_stmt_line_principal = InvestStatementLine()
         invest_stmt_line_principal.__dict__ = invest_stmt_line.__dict__.copy()
+        # invest_stmt_line_principal.date = None
+        # invest_stmt_line_principal.memo = None
         invest_stmt_line_principal.account = self.mortgage_account
         invest_stmt_line_principal.amount = mortgage_principal
         invest_stmt_line_principal.units = mortgage_principal
@@ -321,12 +326,16 @@ class FidelityCSVParser(AbstractStatementParser):
 
         invest_stmt_line_interest = InvestStatementLine()
         invest_stmt_line_interest.__dict__ = invest_stmt_line.__dict__.copy()
+        # invest_stmt_line_interest.date = None
+        # invest_stmt_line_interest.memo = None
         invest_stmt_line_interest.account = self.interest_account
         invest_stmt_line_interest.amount = mortgage_interest
         invest_stmt_line_interest.units = mortgage_interest
 
         invest_stmt_line_escrow = InvestStatementLine()
         invest_stmt_line_escrow.__dict__ = invest_stmt_line.__dict__.copy()
+        # invest_stmt_line_escrow.date = None
+        # invest_stmt_line_escrow.memo = None
         invest_stmt_line_escrow.account = self.escrow_account
         invest_stmt_line_escrow.amount = mortgage_escrow
         invest_stmt_line_escrow.units = mortgage_escrow
@@ -335,6 +344,8 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_lines.append(invest_stmt_line_principal)
         invest_lines.append(invest_stmt_line_interest)
         invest_lines.append(invest_stmt_line_escrow)
+
+        invest_lines.reverse()
         return invest_lines
         
     def provide_pricing(self, invest_line):
