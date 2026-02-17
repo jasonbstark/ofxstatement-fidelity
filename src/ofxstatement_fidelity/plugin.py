@@ -245,25 +245,7 @@ class FidelityCSVParser(AbstractStatementParser):
                 if match:
                     self.statement.account_id = match[1]
 
-            ld = []
-            for line in self.statement.invest_lines:
-                d = line.__dict__
-                ld.append(d)
-            ld.reverse()
-
-            df_statement = pd.DataFrame(ld)
-
-            statement_cols = df_statement.columns
-            cols = ["date","account","memo","security_id","units","unit_price","amount","id_trx", "id_split"]
-            for col in cols:
-                if col not in statement_cols:
-                    df_statement[col] = pd.Series()
-
-            statement_cols = df_statement.columns
-            newcols = [col for col in cols if col in statement_cols] + [col for col in statement_cols if col not in cols]
-            df_statement = df_statement[newcols]
-
-            self.df_statement = df_statement
+            self.statement_to_df()
 
             self.process_transfers()
 
@@ -300,6 +282,27 @@ class FidelityCSVParser(AbstractStatementParser):
                 )
 
             return self.statement
+
+    def statement_to_df(self):
+        ld = []
+        for line in self.statement.invest_lines:
+            d = line.__dict__
+            ld.append(d)
+        ld.reverse()
+
+        df_statement = pd.DataFrame(ld)
+
+        statement_cols = df_statement.columns
+        cols = ["date","account","memo","security_id","units","unit_price","amount","id_trx", "id_split"]
+        for col in cols:
+            if col not in statement_cols:
+                df_statement[col] = pd.Series()
+
+        statement_cols = df_statement.columns
+        newcols = [col for col in cols if col in statement_cols] + [col for col in statement_cols if col not in cols]
+        df_statement = df_statement[newcols]
+
+        self.df_statement = df_statement
 
     def sort_if_necessary(self, df, column):
         if not df[column].is_monotonic_increasing:
