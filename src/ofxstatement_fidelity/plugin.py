@@ -83,6 +83,7 @@ class FidelityCSVParser(AbstractStatementParser):
         self.statement.currency = "USD"
         self.df_statement = None
         self.match_lookback_days = 0
+        self.match_lookforward_days = 0
 
         self.mortgage_account = "Real Estate:Mortgage Amerisave"
         self.interest_account = "Interest:Mortgage"
@@ -244,14 +245,6 @@ class FidelityCSVParser(AbstractStatementParser):
                 if match:
                     self.statement.account_id = match[1]
 
-            invest_lines = self.statement.invest_lines.copy()
-            invest_lines_reversed = invest_lines.copy()
-            invest_lines_reversed.reverse()
-            for invest_line in invest_lines_reversed:
-                id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_line.account + ", " + invest_line.trntype + ", " + invest_line.trntype_detailed
-                invest_line.id_split = self.id_str_generate(id_string)
-                invest_line.assert_valid()
-
             ld = []
             for line in self.statement.invest_lines:
                 d = line.__dict__
@@ -260,22 +253,41 @@ class FidelityCSVParser(AbstractStatementParser):
 
             df_statement = pd.DataFrame(ld)
 
-            df_cols = df_statement.columns
+            statement_cols = df_statement.columns
             cols = ["date","account","memo","security_id","units","unit_price","amount","id_trx", "id_split"]
             for col in cols:
-                if col not in df_cols:
+                if col not in statement_cols:
                     df_statement[col] = pd.Series()
+
             statement_cols = df_statement.columns
             newcols = [col for col in cols if col in statement_cols] + [col for col in statement_cols if col not in cols]
             df_statement = df_statement[newcols]
 
             self.df_statement = df_statement
-            print(f"self.df_statement = \n{self.df_statement}")
+
+            self.process_transfers()
 
             self.statement.invest_lines = []
-            for invest_line in invest_lines_reversed:
-                self.statement.invest_lines.append(invest_line)
-                invest_line.assert_valid()
+            for index, row in self.df_statement.iterrows():
+                invest_stmt_line = InvestStatementLine()
+                invest_stmt_line.date = row['date']
+                invest_stmt_line.account = row['account']
+                invest_stmt_line.memo = row['memo']
+                invest_stmt_line.security_id = row['security_id']
+                invest_stmt_line.units = row['units']
+                invest_stmt_line.unit_price = row['unit_price']
+                invest_stmt_line.amount = row['amount']
+                invest_stmt_line.id_trx = row['id_trx']
+                invest_stmt_line.id_split = row['id_split']
+                invest_stmt_line.trntype = row['trntype']
+                invest_stmt_line.trntype_detailed = row['trntype_detailed']
+                invest_stmt_line.account_type = row['account_type']
+
+                id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
+                invest_stmt_line.id_split = self.id_str_generate(id_string)
+                invest_stmt_line.assert_valid()
+
+                self.statement.invest_lines.append(invest_stmt_line)
 
             self.statement.invest_lines.reverse()
 
@@ -293,6 +305,22 @@ class FidelityCSVParser(AbstractStatementParser):
         if not df[column].is_monotonic_increasing:
             return df.sort_values(by=column)
         return df
+
+    def process_transfers(self):
+        for index, row in self.df_statement.iterrows():
+            if "TRANSFERRED FROM VS " in row['memo']:
+                mask_date = (self.df_statement['date'] >= row['date'] - timedelta(days=self.match_lookback_days)) & (self.df_statement['date'] <= row['date'] + timedelta(days=self.match_lookforward_days))
+                mask_amount = (self.df_statement['amount'] == -row['amount'])
+
+                df_match_date = self.df_statement[mask_date]
+                df_match = self.df_statement[mask_date & mask_amount]
+
+                df_match_length = df_match.shape[0]
+                if df_match_length == 1:
+                    index_match = df_match.index[0]
+                    self.df_statement.loc[index, 'id_trx'] = self.df_statement.loc[index_match, 'id_trx']
+                    self.df_statement.loc[index, 'memo'] = self.df_statement.loc[index_match, 'memo']
+        return
 
     def buildStockTransactions(self, invest_stmt_line):
         invest_lines = []
