@@ -60,6 +60,18 @@ class FidelityCSVParser(AbstractStatementParser):
         (re.compile(r"^352042315"), "Fidelity:Fidelity 352042315 (Elisa)"),
     ]
 
+    dividends_dict =   {"Fidelity:Fidelity 159258482 (Jason)":  
+                        {
+                            "NVDA": "Income:Dividends:Fidelity 159258482 (Jason):NVDA", 
+                            "CRWV": "Income:Dividends:Fidelity 159258482 (Jason):CRWV"
+                        },
+                    "Fidelity:Fidelity 352042315 (Elisa)":  
+                        {
+                            "MCD": "Income:Dividends:Fidelity 352-042315 (Elisa):MCD"
+                        },
+                    
+                    }
+
     stocks_dict =   {"Fidelity:Fidelity 159258482 (Jason)":  
                         {
                             "NVDA": "Fidelity:Fidelity 159258482 (Jason):NVDA", 
@@ -67,7 +79,7 @@ class FidelityCSVParser(AbstractStatementParser):
                         },
                     "Fidelity:Fidelity 352042315 (Elisa)":  
                         {
-                            "MCD": "Fidelity:Fidelity 352-042315 (Elisa):MCDONALDS CORP"
+                            "MCD": "Fidelity:Fidelity 352-042315 (Elisa):MCD"
                         },
                     
                     }
@@ -111,7 +123,6 @@ class FidelityCSVParser(AbstractStatementParser):
 
     def parse_record(self, line):
         """Parse given transaction line and return StatementLine object"""
-        # print(f"line = {line}")
 
         line_length = len(line)
         if line_length == 14:
@@ -204,15 +215,21 @@ class FidelityCSVParser(AbstractStatementParser):
             invest_stmt_line.units = self.parse_decimal(line[AMOUNT])
             invest_stmt_line.unit_price = Decimal(1).quantize(Decimal(10) ** -6)
 
-        if ("REINVESTMENT CASH (FDRXX)" in invest_stmt_line.memo) or ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" in invest_stmt_line.memo):
-            invest_stmt_line.account = "Income:Dividends:" + invest_stmt_line.account.split(sep=":")[1] + ":FIDELITY CASH RESERVES"
+        if ("REINVESTMENT CASH (FDRXX)" in invest_stmt_line.memo) \
+            or ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" in invest_stmt_line.memo):
+            invest_stmt_line.account = "Income:Dividends:" + invest_stmt_line.account.split(sep=":")[1] + ":FDRXX"
 
         invest_stmt_line = self.provide_pricing(invest_stmt_line)
 
         if self.mortgage_pattern.match(invest_stmt_line.memo):
             invest_stmt_lines = self.buildMortgageTransactions(invest_stmt_line)
-        elif (invest_stmt_line.trntype in ("BUYSTOCK", "SELLSTOCK")) and ("REINVESTMENT CASH (FDRXX)" not in invest_stmt_line.memo):
+        elif (invest_stmt_line.trntype in ("BUYSTOCK", "SELLSTOCK")) \
+            and ("REINVESTMENT CASH (FDRXX)" not in invest_stmt_line.memo) \
+            and ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" not in invest_stmt_line.memo):
             invest_stmt_lines = self.buildStockTransactions(invest_stmt_line)
+        elif ("DIVIDEND RECEIVED " in invest_stmt_line.memo) and ("FDRXX" not in invest_stmt_line.memo):
+            invest_stmt_lines = self.buildDividendTransactions(invest_stmt_line)
+
         else:
             id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
             id_trx = self.id_str_generate(id_string)
@@ -249,6 +266,8 @@ class FidelityCSVParser(AbstractStatementParser):
 
             self.process_transfers()
 
+            self.df_statement.sort_values(by=['date', 'id_trx'], ascending=[True, True], inplace=True)
+
             self.df_to_statement()
 
             self.statement.invest_lines.reverse()
@@ -263,58 +282,9 @@ class FidelityCSVParser(AbstractStatementParser):
 
             return self.statement
 
-    def df_to_statement(self):
-        self.statement.invest_lines = []
-        for index, row in self.df_statement.iterrows():
-            invest_stmt_line = InvestStatementLine()
-            invest_stmt_line.date = row['date']
-            invest_stmt_line.account = row['account']
-            invest_stmt_line.memo = row['memo']
-            invest_stmt_line.security_id = row['security_id']
-            invest_stmt_line.units = row['units']
-            invest_stmt_line.unit_price = row['unit_price']
-            invest_stmt_line.amount = row['amount']
-            invest_stmt_line.id_trx = row['id_trx']
-            invest_stmt_line.id_split = row['id_split']
-            invest_stmt_line.trntype = row['trntype']
-            invest_stmt_line.trntype_detailed = row['trntype_detailed']
-            invest_stmt_line.account_type = row['account_type']
-
-            id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
-            invest_stmt_line.id_split = self.id_str_generate(id_string)
-            invest_stmt_line.assert_valid()
-
-            self.statement.invest_lines.append(invest_stmt_line)
-        
-    def statement_to_df(self):
-        ld = []
-        for line in self.statement.invest_lines:
-            d = line.__dict__
-            ld.append(d)
-        ld.reverse()
-
-        df_statement = pd.DataFrame(ld)
-
-        statement_cols = df_statement.columns
-        cols = ["date","account","memo","security_id","units","unit_price","amount","id_trx", "id_split"]
-        for col in cols:
-            if col not in statement_cols:
-                df_statement[col] = pd.Series()
-
-        statement_cols = df_statement.columns
-        newcols = [col for col in cols if col in statement_cols] + [col for col in statement_cols if col not in cols]
-        df_statement = df_statement[newcols]
-
-        self.df_statement = df_statement
-
-    def sort_if_necessary(self, df, column):
-        if not df[column].is_monotonic_increasing:
-            return df.sort_values(by=column)
-        return df
-
     def process_transfers(self):
         for index, row in self.df_statement.iterrows():
-            if "TRANSFERRED FROM VS " in row['memo']:
+            if ("TRANSFERRED FROM VS " in row['memo']) or ("REINVESTMENT CASH (FDRXX)" in row['memo']) or ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" in row['memo']):
                 mask_date = (self.df_statement['date'] >= row['date'] - timedelta(days=self.match_lookback_days)) & (self.df_statement['date'] <= row['date'] + timedelta(days=self.match_lookforward_days))
                 mask_amount = (self.df_statement['amount'] == -row['amount'])
 
@@ -328,6 +298,29 @@ class FidelityCSVParser(AbstractStatementParser):
                     self.df_statement.loc[index, 'memo'] = self.df_statement.loc[index_match, 'memo']
         return
 
+    def buildDividendTransactions(self, invest_stmt_line):
+        invest_lines = []
+        
+        id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
+        id_trx = self.id_str_generate(id_string)
+
+        invest_stmt_line_dividend = InvestStatementLine()
+        invest_stmt_line_dividend.__dict__ = invest_stmt_line.__dict__.copy()
+
+        account = self.dividends_dict[invest_stmt_line_dividend.account][invest_stmt_line_dividend.security_id]
+        invest_stmt_line_dividend.account = account
+        invest_stmt_line_dividend.amount = -invest_stmt_line_dividend.amount
+        invest_stmt_line_dividend.id_trx = id_trx
+
+        invest_stmt_line.unit_price = Decimal(1).quantize(SIXPLACES)
+        invest_stmt_line.units = invest_stmt_line.amount
+        invest_stmt_line.id_trx = id_trx        
+
+        invest_lines.append(invest_stmt_line)
+        invest_lines.append(invest_stmt_line_dividend)
+
+        return invest_lines
+        
     def buildStockTransactions(self, invest_stmt_line):
         invest_lines = []
         
@@ -371,12 +364,10 @@ class FidelityCSVParser(AbstractStatementParser):
         mortgage_escrow = (mortgage_payment - self.mortgage_principal_interest).quantize(TWOPLACES)
         mortgage_delta = mortgage_payment - mortgage_principal - mortgage_interest - mortgage_escrow
         if mortgage_delta != Decimal(0):
-            print(f"buildMortgage:  Error, mortgage payment not sum of principal, interest and escrow")
+            sys.exit(ValueError)
 
         invest_stmt_line_principal = InvestStatementLine()
         invest_stmt_line_principal.__dict__ = invest_stmt_line.__dict__.copy()
-        # invest_stmt_line_principal.date = None
-        # invest_stmt_line_principal.memo = None
         invest_stmt_line_principal.account = self.mortgage_account
         invest_stmt_line_principal.amount = mortgage_principal
         invest_stmt_line_principal.units = mortgage_principal
@@ -385,8 +376,6 @@ class FidelityCSVParser(AbstractStatementParser):
 
         invest_stmt_line_interest = InvestStatementLine()
         invest_stmt_line_interest.__dict__ = invest_stmt_line.__dict__.copy()
-        # invest_stmt_line_interest.date = None
-        # invest_stmt_line_interest.memo = None
         invest_stmt_line_interest.account = self.interest_account
         invest_stmt_line_interest.amount = mortgage_interest
         invest_stmt_line_interest.units = mortgage_interest
@@ -394,8 +383,6 @@ class FidelityCSVParser(AbstractStatementParser):
 
         invest_stmt_line_escrow = InvestStatementLine()
         invest_stmt_line_escrow.__dict__ = invest_stmt_line.__dict__.copy()
-        # invest_stmt_line_escrow.date = None
-        # invest_stmt_line_escrow.memo = None
         invest_stmt_line_escrow.account = self.escrow_account
         invest_stmt_line_escrow.amount = mortgage_escrow
         invest_stmt_line_escrow.units = mortgage_escrow
@@ -407,6 +394,50 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_lines.append(invest_stmt_line_escrow)
 
         return invest_lines
+        
+    def statement_to_df(self):
+        ld = []
+        for line in self.statement.invest_lines:
+            d = line.__dict__
+            ld.append(d)
+        ld.reverse()
+
+        df_statement = pd.DataFrame(ld)
+
+        statement_cols = df_statement.columns
+        cols = ["date","account","memo","security_id","units","unit_price","amount","id_trx", "id_split"]
+        for col in cols:
+            if col not in statement_cols:
+                df_statement[col] = pd.Series()
+
+        statement_cols = df_statement.columns
+        newcols = [col for col in cols if col in statement_cols] + [col for col in statement_cols if col not in cols]
+        df_statement = df_statement[newcols]
+
+        self.df_statement = df_statement
+
+    def df_to_statement(self):
+        self.statement.invest_lines = []
+        for index, row in self.df_statement.iterrows():
+            invest_stmt_line = InvestStatementLine()
+            invest_stmt_line.date = row['date']
+            invest_stmt_line.account = row['account']
+            invest_stmt_line.memo = row['memo']
+            invest_stmt_line.security_id = row['security_id']
+            invest_stmt_line.units = row['units']
+            invest_stmt_line.unit_price = row['unit_price']
+            invest_stmt_line.amount = row['amount']
+            invest_stmt_line.id_trx = row['id_trx']
+            invest_stmt_line.id_split = row['id_split']
+            invest_stmt_line.trntype = row['trntype']
+            invest_stmt_line.trntype_detailed = row['trntype_detailed']
+            invest_stmt_line.account_type = row['account_type']
+
+            id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
+            invest_stmt_line.id_split = self.id_str_generate(id_string)
+            invest_stmt_line.assert_valid()
+
+            self.statement.invest_lines.append(invest_stmt_line)
         
     def provide_pricing(self, invest_line):
         if invest_line.unit_price is None:
