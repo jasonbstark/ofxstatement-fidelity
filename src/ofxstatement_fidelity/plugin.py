@@ -85,6 +85,8 @@ class FidelityCSVParser(AbstractStatementParser):
                     }
 
     mortgage_pattern = re.compile(r"^DIRECT DEBIT FREEDOM MTG PYMTS")
+    
+    citicard_account = "Citi Costco Visa"
 
 
     def __init__(self, filename: str) -> None:
@@ -229,6 +231,8 @@ class FidelityCSVParser(AbstractStatementParser):
             invest_stmt_lines = self.buildStockTransactions(invest_stmt_line)
         elif ("DIVIDEND RECEIVED " in invest_stmt_line.Description) and ("FDRXX" not in invest_stmt_line.Description):
             invest_stmt_lines = self.buildDividendTransactions(invest_stmt_line)
+        elif ("DIRECT DEBIT CITI CARD ONLIPAYMENT" in invest_stmt_line.Description):
+            invest_stmt_lines = self.buildCitiCardTransfer(invest_stmt_line)
         else:
             id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
             id_trx = self.id_str_generate(id_string)
@@ -298,6 +302,31 @@ class FidelityCSVParser(AbstractStatementParser):
                     self.df_statement.loc[index, 'Description'] = self.df_statement.loc[index_match, 'Description']
         return
 
+    def buildCitiCardTransfer(self, invest_stmt_line):
+        invest_lines = []
+        
+        id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
+        id_trx = self.id_str_generate(id_string)
+
+        invest_stmt_line_citicard = InvestStatementLine()
+        invest_stmt_line_citicard.__dict__ = invest_stmt_line.__dict__.copy()
+
+        invest_stmt_line_citicard.account_type = "Credit Card"
+        invest_stmt_line_citicard.Account = self.citicard_account
+        invest_stmt_line_citicard.Amount = -invest_stmt_line.Value
+        invest_stmt_line_citicard.Price = Decimal(1).quantize(SIXPLACES)
+        invest_stmt_line_citicard.Value = -invest_stmt_line.Value
+        invest_stmt_line_citicard.TransactionID = id_trx
+
+        invest_stmt_line.Price = Decimal(1).quantize(SIXPLACES)
+        invest_stmt_line.Amount = invest_stmt_line.Value
+        invest_stmt_line.TransactionID = id_trx        
+
+        invest_lines.append(invest_stmt_line)
+        invest_lines.append(invest_stmt_line_citicard)
+
+        return invest_lines
+        
     def buildDividendTransactions(self, invest_stmt_line):
         invest_lines = []
         
@@ -308,8 +337,8 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_stmt_line_dividend.__dict__ = invest_stmt_line.__dict__.copy()
 
         account = self.dividends_dict[invest_stmt_line_dividend.account][invest_stmt_line_dividend.security_id]
-        invest_stmt_line_dividend.account = account
-        invest_stmt_line_dividend.amount = -invest_stmt_line_dividend.amount
+        invest_stmt_line_dividend.Account = account
+        invest_stmt_line_dividend.Value = -invest_stmt_line.Value
         invest_stmt_line_dividend.TransactionID = id_trx
 
         invest_stmt_line.Price = Decimal(1).quantize(SIXPLACES)
@@ -332,11 +361,11 @@ class FidelityCSVParser(AbstractStatementParser):
 
         account = self.stocks_dict[invest_stmt_line_stock.Account][invest_stmt_line_stock.TransactionCommodity]
         invest_stmt_line_stock.Account = account
-        invest_stmt_line_stock.Value = -invest_stmt_line_stock.Value
+        invest_stmt_line_stock.Value = -invest_stmt_line.Value
         invest_stmt_line_stock.TransactionID = id_trx
 
         invest_stmt_line.Price = Decimal(1).quantize(SIXPLACES)
-        invest_stmt_line.Amount = invest_stmt_line.Value
+        invest_stmt_line.Value = invest_stmt_line.Value
         invest_stmt_line.TransactionID = id_trx        
 
         invest_lines.append(invest_stmt_line)
@@ -370,6 +399,7 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_stmt_line_principal.__dict__ = invest_stmt_line.__dict__.copy()
         invest_stmt_line_principal.Account = self.mortgage_account
         invest_stmt_line_principal.Value = mortgage_principal
+        invest_stmt_line_principal.Price = Decimal(1).quantize(SIXPLACES)
         invest_stmt_line_principal.Amount = mortgage_principal
         invest_stmt_line_principal.TransactionID = id_trx        
         self.mortgage_balance -= mortgage_principal
@@ -378,6 +408,7 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_stmt_line_interest.__dict__ = invest_stmt_line.__dict__.copy()
         invest_stmt_line_interest.Account = self.interest_account
         invest_stmt_line_interest.Value = mortgage_interest
+        invest_stmt_line_interest.Price = Decimal(1).quantize(SIXPLACES)
         invest_stmt_line_interest.Amount = mortgage_interest
         invest_stmt_line_interest.TransactionID = id_trx        
 
@@ -385,6 +416,7 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_stmt_line_escrow.__dict__ = invest_stmt_line.__dict__.copy()
         invest_stmt_line_escrow.Account = self.escrow_account
         invest_stmt_line_escrow.Value = mortgage_escrow
+        invest_stmt_line_escrow.Price = Decimal(1).quantize(SIXPLACES)
         invest_stmt_line_escrow.Amount = mortgage_escrow
         invest_stmt_line_escrow.TransactionID = id_trx        
 
