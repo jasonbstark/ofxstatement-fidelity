@@ -266,7 +266,7 @@ class FidelityCSVParser(AbstractStatementParser):
 
             self.process_transfers()
 
-            self.df_statement.sort_values(by=['date', 'id_trx'], ascending=[True, True], inplace=True)
+            self.df_statement.sort_values(by=['Date', 'Transaction ID'], ascending=[True, True], inplace=True)
 
             self.df_to_statement()
 
@@ -284,9 +284,9 @@ class FidelityCSVParser(AbstractStatementParser):
 
     def process_transfers(self):
         for index, row in self.df_statement.iterrows():
-            if ("TRANSFERRED FROM VS " in row['memo']) or ("REINVESTMENT CASH (FDRXX)" in row['memo']) or ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" in row['memo']):
-                mask_date = (self.df_statement['date'] >= row['date'] - timedelta(days=self.match_lookback_days)) & (self.df_statement['date'] <= row['date'] + timedelta(days=self.match_lookforward_days))
-                mask_amount = (self.df_statement['amount'] == -row['amount'])
+            if ("TRANSFERRED FROM VS " in row['Description']) or ("REINVESTMENT CASH (FDRXX)" in row['Description']) or ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" in row['Description']):
+                mask_date = (self.df_statement['Date'] >= row['Date'] - timedelta(days=self.match_lookback_days)) & (self.df_statement['Date'] <= row['Date'] + timedelta(days=self.match_lookforward_days))
+                mask_amount = (self.df_statement['Value'] == -row['Value'])
 
                 df_match_date = self.df_statement[mask_date]
                 df_match = self.df_statement[mask_date & mask_amount]
@@ -294,8 +294,8 @@ class FidelityCSVParser(AbstractStatementParser):
                 df_match_length = df_match.shape[0]
                 if df_match_length == 1:
                     index_match = df_match.index[0]
-                    self.df_statement.loc[index, 'id_trx'] = self.df_statement.loc[index_match, 'id_trx']
-                    self.df_statement.loc[index, 'memo'] = self.df_statement.loc[index_match, 'memo']
+                    self.df_statement.loc[index, 'Transaction ID'] = self.df_statement.loc[index_match, 'Transaction ID']
+                    self.df_statement.loc[index, 'Description'] = self.df_statement.loc[index_match, 'Description']
         return
 
     def buildDividendTransactions(self, invest_stmt_line):
@@ -403,9 +403,10 @@ class FidelityCSVParser(AbstractStatementParser):
         ld.reverse()
 
         df_statement = pd.DataFrame(ld)
+        df_statement = df_statement.rename(columns={"date": "Date", "account": "Account", "memo": "Description", "security_id": "Transaction Commodity", "units": "Amount", "unit_price": "Price", "amount": "Value", "id_trx": "Transaction ID"})
 
         statement_cols = df_statement.columns
-        cols = ["date","account","memo","security_id","units","unit_price","amount","id_trx", "id_split"]
+        cols = ["Date","Account","Description","Transaction Commodity","Amount","Price","Value","Transaction ID", "id_split"]
         for col in cols:
             if col not in statement_cols:
                 df_statement[col] = pd.Series()
@@ -420,14 +421,14 @@ class FidelityCSVParser(AbstractStatementParser):
         self.statement.invest_lines = []
         for index, row in self.df_statement.iterrows():
             invest_stmt_line = InvestStatementLine()
-            invest_stmt_line.date = row['date']
-            invest_stmt_line.account = row['account']
-            invest_stmt_line.memo = row['memo']
-            invest_stmt_line.security_id = row['security_id']
-            invest_stmt_line.units = row['units']
-            invest_stmt_line.unit_price = row['unit_price']
-            invest_stmt_line.amount = row['amount']
-            invest_stmt_line.id_trx = row['id_trx']
+            invest_stmt_line.date = row['Date']
+            invest_stmt_line.account = row['Account']
+            invest_stmt_line.memo = row['Description']
+            invest_stmt_line.security_id = row['Transaction Commodity']
+            invest_stmt_line.units = row['Amount']
+            invest_stmt_line.unit_price = row['Price']
+            invest_stmt_line.amount = row['Value']
+            invest_stmt_line.id_trx = row['Transaction ID']
             invest_stmt_line.id_split = row['id_split']
             invest_stmt_line.trntype = row['trntype']
             invest_stmt_line.trntype_detailed = row['trntype_detailed']
@@ -438,6 +439,7 @@ class FidelityCSVParser(AbstractStatementParser):
             invest_stmt_line.assert_valid()
 
             self.statement.invest_lines.append(invest_stmt_line)
+            print(f"self.statement.invest_lines = \n{self.statement.invest_lines}")
         
     def provide_pricing(self, invest_line):
         if invest_line.unit_price is None:
