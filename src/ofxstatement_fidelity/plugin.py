@@ -85,6 +85,8 @@ class FidelityCSVParser(AbstractStatementParser):
                     }
 
     mortgage_pattern = re.compile(r"^DIRECT DEBIT FREEDOM MTG PYMTS")
+    
+    citicard_account = "Citi Costco Visa"
 
 
     def __init__(self, filename: str) -> None:
@@ -170,7 +172,7 @@ class FidelityCSVParser(AbstractStatementParser):
             return None
 
         invest_stmt_line = InvestStatementLine()
-        invest_stmt_line.date = date
+        invest_stmt_line.Date = date
 
         if line[SETTLEMENTDATE]:
             try:
@@ -180,7 +182,7 @@ class FidelityCSVParser(AbstractStatementParser):
             except ValueError:
                 pass
 
-        invest_stmt_line.memo = line[ACTION].replace("315994103", "FDRXX")
+        invest_stmt_line.Description = line[ACTION].replace("315994103", "FDRXX")
 
         if line[ACCOUNT]:
             invest_stmt_line.account_type = line[ACCOUNT]
@@ -188,7 +190,7 @@ class FidelityCSVParser(AbstractStatementParser):
         if line[ACCOUNTNUMBER]:
             for pattern, name in self.mappings_accounts:
                 if pattern.match(line[ACCOUNTNUMBER]):
-                    invest_stmt_line.account = name
+                    invest_stmt_line.Account = name
                     break
 
         if line[FEES]:
@@ -196,7 +198,7 @@ class FidelityCSVParser(AbstractStatementParser):
 
         if line[AMOUNT]:
             sign_amount = np.sign(Decimal(line[AMOUNT]))
-            invest_stmt_line.amount = self.parse_decimal(line[AMOUNT])
+            invest_stmt_line.Value = self.parse_decimal(line[AMOUNT])
 
         action = line[ACTION]
         for pattern, trntype, detailed in self.mappings_memo:
@@ -206,34 +208,35 @@ class FidelityCSVParser(AbstractStatementParser):
                 break
 
         if invest_stmt_line.trntype in ("BUYSTOCK", "SELLSTOCK"):
-            invest_stmt_line.security_id = line[SYMBOL].replace("315994103", "FDRXX")
-            invest_stmt_line.units = sign_amount * self.parse_decimal(line[QUANTITY])
-            invest_stmt_line.unit_price = Decimal(abs(self.parse_decimal(line[AMOUNT]) / self.parse_decimal(line[QUANTITY]))).quantize(Decimal(10) ** -6)
+            invest_stmt_line.TransactionCommodity = line[SYMBOL].replace("315994103", "FDRXX")
+            invest_stmt_line.Amount = sign_amount * self.parse_decimal(line[QUANTITY])
+            invest_stmt_line.Price = Decimal(abs(self.parse_decimal(line[AMOUNT]) / self.parse_decimal(line[QUANTITY]))).quantize(Decimal(10) ** -6)
 
         elif (invest_stmt_line.trntype == "INCOME" and invest_stmt_line.trntype_detailed == "DIV"):
-            invest_stmt_line.security_id = line[SYMBOL].replace("315994103", "FDRXX")
-            invest_stmt_line.units = self.parse_decimal(line[AMOUNT])
-            invest_stmt_line.unit_price = Decimal(1).quantize(Decimal(10) ** -6)
+            invest_stmt_line.TransactionCommodity = line[SYMBOL].replace("315994103", "FDRXX")
+            invest_stmt_line.Amount = self.parse_decimal(line[AMOUNT])
+            invest_stmt_line.Price = Decimal(1).quantize(Decimal(10) ** -6)
 
-        if ("REINVESTMENT CASH (FDRXX)" in invest_stmt_line.memo) \
-            or ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" in invest_stmt_line.memo):
-            invest_stmt_line.account = "Income:Dividends:" + invest_stmt_line.account.split(sep=":")[1] + ":FDRXX"
+        if ("REINVESTMENT CASH (FDRXX)" in invest_stmt_line.Description) \
+            or ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" in invest_stmt_line.Description):
+            invest_stmt_line.Account = "Income:Dividends:" + invest_stmt_line.Account.split(sep=":")[1] + ":FDRXX"
 
         invest_stmt_line = self.provide_pricing(invest_stmt_line)
 
-        if self.mortgage_pattern.match(invest_stmt_line.memo):
+        if self.mortgage_pattern.match(invest_stmt_line.Description):
             invest_stmt_lines = self.buildMortgageTransactions(invest_stmt_line)
         elif (invest_stmt_line.trntype in ("BUYSTOCK", "SELLSTOCK")) \
-            and ("REINVESTMENT CASH (FDRXX)" not in invest_stmt_line.memo) \
-            and ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" not in invest_stmt_line.memo):
+            and ("REINVESTMENT CASH (FDRXX)" not in invest_stmt_line.Description) \
+            and ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" not in invest_stmt_line.Description):
             invest_stmt_lines = self.buildStockTransactions(invest_stmt_line)
-        elif ("DIVIDEND RECEIVED " in invest_stmt_line.memo) and ("FDRXX" not in invest_stmt_line.memo):
+        elif ("DIVIDEND RECEIVED " in invest_stmt_line.Description) and ("FDRXX" not in invest_stmt_line.Description):
             invest_stmt_lines = self.buildDividendTransactions(invest_stmt_line)
-
+        elif ("DIRECT DEBIT CITI CARD ONLIPAYMENT" in invest_stmt_line.Description):
+            invest_stmt_lines = self.buildCitiCardTransfer(invest_stmt_line)
         else:
-            id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
+            id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
             id_trx = self.id_str_generate(id_string)
-            invest_stmt_line.id_trx = id_trx
+            invest_stmt_line.TransactionID = id_trx
             invest_stmt_lines = [invest_stmt_line]
 
         return invest_stmt_lines
@@ -248,6 +251,7 @@ class FidelityCSVParser(AbstractStatementParser):
                 self.cur_record += 1
                 if not csv_line:
                     continue
+
                 invest_stmt_lines = self.parse_record(csv_line)
 
                 if invest_stmt_lines:
@@ -266,7 +270,7 @@ class FidelityCSVParser(AbstractStatementParser):
 
             self.process_transfers()
 
-            self.df_statement.sort_values(by=['date', 'id_trx'], ascending=[True, True], inplace=True)
+            self.df_statement.sort_values(by=['Date', 'TransactionID'], ascending=[True, True], inplace=True)
 
             self.df_to_statement()
 
@@ -274,19 +278,19 @@ class FidelityCSVParser(AbstractStatementParser):
 
             if self.statement.invest_lines:
                 self.statement.start_date = min(
-                    sl.date for sl in self.statement.invest_lines if sl.date is not None
+                    sl.Date for sl in self.statement.invest_lines if sl.Date is not None
                 )
                 self.statement.end_date = max(
-                    sl.date for sl in self.statement.invest_lines if sl.date is not None
+                    sl.Date for sl in self.statement.invest_lines if sl.Date is not None
                 )
 
             return self.statement
 
     def process_transfers(self):
         for index, row in self.df_statement.iterrows():
-            if ("TRANSFERRED FROM VS " in row['memo']) or ("REINVESTMENT CASH (FDRXX)" in row['memo']) or ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" in row['memo']):
-                mask_date = (self.df_statement['date'] >= row['date'] - timedelta(days=self.match_lookback_days)) & (self.df_statement['date'] <= row['date'] + timedelta(days=self.match_lookforward_days))
-                mask_amount = (self.df_statement['amount'] == -row['amount'])
+            if ("TRANSFERRED FROM VS " in row['Description']) or ("REINVESTMENT CASH (FDRXX)" in row['Description']) or ("REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)" in row['Description']):
+                mask_date = (self.df_statement['Date'] >= row['Date'] - timedelta(days=self.match_lookback_days)) & (self.df_statement['Date'] <= row['Date'] + timedelta(days=self.match_lookforward_days))
+                mask_amount = (self.df_statement['Value'] == -row['Value'])
 
                 df_match_date = self.df_statement[mask_date]
                 df_match = self.df_statement[mask_date & mask_amount]
@@ -294,27 +298,52 @@ class FidelityCSVParser(AbstractStatementParser):
                 df_match_length = df_match.shape[0]
                 if df_match_length == 1:
                     index_match = df_match.index[0]
-                    self.df_statement.loc[index, 'id_trx'] = self.df_statement.loc[index_match, 'id_trx']
-                    self.df_statement.loc[index, 'memo'] = self.df_statement.loc[index_match, 'memo']
+                    self.df_statement.loc[index, 'TransactionID'] = self.df_statement.loc[index_match, 'TransactionID']
+                    self.df_statement.loc[index, 'Description'] = self.df_statement.loc[index_match, 'Description']
         return
 
+    def buildCitiCardTransfer(self, invest_stmt_line):
+        invest_lines = []
+        
+        id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
+        id_trx = self.id_str_generate(id_string)
+
+        invest_stmt_line_citicard = InvestStatementLine()
+        invest_stmt_line_citicard.__dict__ = invest_stmt_line.__dict__.copy()
+
+        invest_stmt_line_citicard.account_type = "Credit Card"
+        invest_stmt_line_citicard.Account = self.citicard_account
+        invest_stmt_line_citicard.Amount = -invest_stmt_line.Value
+        invest_stmt_line_citicard.Price = Decimal(1).quantize(SIXPLACES)
+        invest_stmt_line_citicard.Value = -invest_stmt_line.Value
+        invest_stmt_line_citicard.TransactionID = id_trx
+
+        invest_stmt_line.Price = Decimal(1).quantize(SIXPLACES)
+        invest_stmt_line.Amount = invest_stmt_line.Value
+        invest_stmt_line.TransactionID = id_trx        
+
+        invest_lines.append(invest_stmt_line)
+        invest_lines.append(invest_stmt_line_citicard)
+
+        return invest_lines
+        
     def buildDividendTransactions(self, invest_stmt_line):
         invest_lines = []
         
-        id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
+        id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
         id_trx = self.id_str_generate(id_string)
 
         invest_stmt_line_dividend = InvestStatementLine()
         invest_stmt_line_dividend.__dict__ = invest_stmt_line.__dict__.copy()
 
         account = self.dividends_dict[invest_stmt_line_dividend.account][invest_stmt_line_dividend.security_id]
-        invest_stmt_line_dividend.account = account
-        invest_stmt_line_dividend.amount = -invest_stmt_line_dividend.amount
-        invest_stmt_line_dividend.id_trx = id_trx
+        invest_stmt_line_dividend.Account = account
+        invest_stmt_line_dividend.Value = -invest_stmt_line.Value
+        invest_stmt_line_dividend.TransactionID = id_trx
 
-        invest_stmt_line.unit_price = Decimal(1).quantize(SIXPLACES)
-        invest_stmt_line.units = invest_stmt_line.amount
-        invest_stmt_line.id_trx = id_trx        
+        invest_stmt_line.Price = Decimal(1).quantize(SIXPLACES)
+        invest_stmt_line.Amount = invest_stmt_line.Value
+        invest_stmt_line.TransactionID = id_trx        
 
         invest_lines.append(invest_stmt_line)
         invest_lines.append(invest_stmt_line_dividend)
@@ -324,20 +353,20 @@ class FidelityCSVParser(AbstractStatementParser):
     def buildStockTransactions(self, invest_stmt_line):
         invest_lines = []
         
-        id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
+        id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
         id_trx = self.id_str_generate(id_string)
 
         invest_stmt_line_stock = InvestStatementLine()
         invest_stmt_line_stock.__dict__ = invest_stmt_line.__dict__.copy()
 
-        account = self.stocks_dict[invest_stmt_line_stock.account][invest_stmt_line_stock.security_id]
-        invest_stmt_line_stock.account = account
-        invest_stmt_line_stock.amount = -invest_stmt_line_stock.amount
-        invest_stmt_line_stock.id_trx = id_trx
+        account = self.stocks_dict[invest_stmt_line_stock.Account][invest_stmt_line_stock.TransactionCommodity]
+        invest_stmt_line_stock.Account = account
+        invest_stmt_line_stock.Value = -invest_stmt_line.Value
+        invest_stmt_line_stock.TransactionID = id_trx
 
-        invest_stmt_line.unit_price = Decimal(1).quantize(SIXPLACES)
-        invest_stmt_line.units = invest_stmt_line.amount
-        invest_stmt_line.id_trx = id_trx        
+        invest_stmt_line.Price = Decimal(1).quantize(SIXPLACES)
+        invest_stmt_line.Value = invest_stmt_line.Value
+        invest_stmt_line.TransactionID = id_trx        
 
         invest_lines.append(invest_stmt_line)
         invest_lines.append(invest_stmt_line_stock)
@@ -349,16 +378,16 @@ class FidelityCSVParser(AbstractStatementParser):
             self.book
         except AttributeError:
             self.book = self.initialize_book()
-            self.mortgage_balance = (-self.account_balance(self.book,  self.mortgage_account, invest_stmt_line.date + timedelta(days=-1))).quantize(TWOPLACES)
+            self.mortgage_balance = (-self.account_balance(self.book,  self.mortgage_account, invest_stmt_line.Date + timedelta(days=-1))).quantize(TWOPLACES)
 
         invest_lines = []
 
-        id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
+        id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
         id_trx = self.id_str_generate(id_string)
 
-        invest_stmt_line.id_trx = id_trx        
+        invest_stmt_line.TransactionID = id_trx
 
-        mortgage_payment = -Decimal(invest_stmt_line.amount).quantize(TWOPLACES)
+        mortgage_payment = -Decimal(invest_stmt_line.Value).quantize(TWOPLACES)
         mortgage_interest = Decimal(self.mortgage_balance * self.mortgage_rate / 1200).quantize(TWOPLACES)
         mortgage_principal = (self.mortgage_principal_interest - mortgage_interest).quantize(TWOPLACES)
         mortgage_escrow = (mortgage_payment - self.mortgage_principal_interest).quantize(TWOPLACES)
@@ -368,25 +397,28 @@ class FidelityCSVParser(AbstractStatementParser):
 
         invest_stmt_line_principal = InvestStatementLine()
         invest_stmt_line_principal.__dict__ = invest_stmt_line.__dict__.copy()
-        invest_stmt_line_principal.account = self.mortgage_account
-        invest_stmt_line_principal.amount = mortgage_principal
-        invest_stmt_line_principal.units = mortgage_principal
-        invest_stmt_line_principal.id_trx = id_trx        
+        invest_stmt_line_principal.Account = self.mortgage_account
+        invest_stmt_line_principal.Value = mortgage_principal
+        invest_stmt_line_principal.Price = Decimal(1).quantize(SIXPLACES)
+        invest_stmt_line_principal.Amount = mortgage_principal
+        invest_stmt_line_principal.TransactionID = id_trx        
         self.mortgage_balance -= mortgage_principal
 
         invest_stmt_line_interest = InvestStatementLine()
         invest_stmt_line_interest.__dict__ = invest_stmt_line.__dict__.copy()
-        invest_stmt_line_interest.account = self.interest_account
-        invest_stmt_line_interest.amount = mortgage_interest
-        invest_stmt_line_interest.units = mortgage_interest
-        invest_stmt_line_interest.id_trx = id_trx        
+        invest_stmt_line_interest.Account = self.interest_account
+        invest_stmt_line_interest.Value = mortgage_interest
+        invest_stmt_line_interest.Price = Decimal(1).quantize(SIXPLACES)
+        invest_stmt_line_interest.Amount = mortgage_interest
+        invest_stmt_line_interest.TransactionID = id_trx        
 
         invest_stmt_line_escrow = InvestStatementLine()
         invest_stmt_line_escrow.__dict__ = invest_stmt_line.__dict__.copy()
-        invest_stmt_line_escrow.account = self.escrow_account
-        invest_stmt_line_escrow.amount = mortgage_escrow
-        invest_stmt_line_escrow.units = mortgage_escrow
-        invest_stmt_line_escrow.id_trx = id_trx        
+        invest_stmt_line_escrow.Account = self.escrow_account
+        invest_stmt_line_escrow.Value = mortgage_escrow
+        invest_stmt_line_escrow.Price = Decimal(1).quantize(SIXPLACES)
+        invest_stmt_line_escrow.Amount = mortgage_escrow
+        invest_stmt_line_escrow.TransactionID = id_trx        
 
         invest_lines.append(invest_stmt_line)
         invest_lines.append(invest_stmt_line_principal)
@@ -405,7 +437,7 @@ class FidelityCSVParser(AbstractStatementParser):
         df_statement = pd.DataFrame(ld)
 
         statement_cols = df_statement.columns
-        cols = ["date","account","memo","security_id","units","unit_price","amount","id_trx", "id_split"]
+        cols = ["Date","Account","Description","TransactionCommodity","Amount","Price","Value","TransactionID", "id_split"]
         for col in cols:
             if col not in statement_cols:
                 df_statement[col] = pd.Series()
@@ -420,29 +452,29 @@ class FidelityCSVParser(AbstractStatementParser):
         self.statement.invest_lines = []
         for index, row in self.df_statement.iterrows():
             invest_stmt_line = InvestStatementLine()
-            invest_stmt_line.date = row['date']
-            invest_stmt_line.account = row['account']
-            invest_stmt_line.memo = row['memo']
-            invest_stmt_line.security_id = row['security_id']
-            invest_stmt_line.units = row['units']
-            invest_stmt_line.unit_price = row['unit_price']
-            invest_stmt_line.amount = row['amount']
-            invest_stmt_line.id_trx = row['id_trx']
+            invest_stmt_line.Date = row['Date']
+            invest_stmt_line.Account = row['Account']
+            invest_stmt_line.Description = row['Description']
+            invest_stmt_line.TransactionCommodity = row['TransactionCommodity']
+            invest_stmt_line.Amount = row['Amount']
+            invest_stmt_line.Price = row['Price']
+            invest_stmt_line.Value = row['Value']
+            invest_stmt_line.TransactionID = row['TransactionID']
             invest_stmt_line.id_split = row['id_split']
             invest_stmt_line.trntype = row['trntype']
             invest_stmt_line.trntype_detailed = row['trntype_detailed']
             invest_stmt_line.account_type = row['account_type']
 
-            id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
+            id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
             invest_stmt_line.id_split = self.id_str_generate(id_string)
             invest_stmt_line.assert_valid()
 
             self.statement.invest_lines.append(invest_stmt_line)
         
     def provide_pricing(self, invest_line):
-        if invest_line.unit_price is None:
-            invest_line.unit_price = Decimal(1).quantize(SIXPLACES)
-            invest_line.units = invest_line.amount
+        if invest_line.Price is None:
+            invest_line.Price = Decimal(1).quantize(SIXPLACES)
+            invest_line.Amount = invest_line.Value
 
         return invest_line
 
