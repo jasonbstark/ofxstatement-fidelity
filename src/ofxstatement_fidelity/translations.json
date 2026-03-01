@@ -1,0 +1,22 @@
+[
+{"Mapping": {"Date": "", "Account": "", "Description": "DIRECT DEBIT APPLECARD", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Apple Card", "Type": "Transfer"},
+{"Mapping": {"Date": "", "Account": "", "Description": "REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer"},
+{"Mapping": {"Date": "", "Account": "", "Description": "DIVIDEND RECEIVED FIDELITY GOVERNMENT CASH RESERVES", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer"},
+{"Mapping": {"Date": "", "Account": "", "Description": "REINVESTMENT CASH [(]315994103[)]", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Income:Dividends:[Account]:FDRXX", "Type": "Transfer"},
+{"Mapping": {"Date": "", "Account": "", "Description": "INTEREST EARNED CASH [(]315994103[)]", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer"},
+{"Mapping": {"Date": "", "Account": "", "Description": " VS ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer"},
+
+{"Mapping": {"Date": "", "Account": "", "Description": "YOU SOLD ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]:[Symbol]", "Type": "Stock"},
+{"Mapping": {"Date": "", "Account": "", "Description": "YOU BOUGHT ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]:[Symbol]", "Type": "Stock"},
+
+{"Mapping": {"Date": "", "Account": "", "Description": "DIRECT DEBIT FREEDOM MTG PYMTS", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account_Mortgage": "Real Estate:Mortgage", "Account_Escrow": "Real Estate:Escrow", "Account_Interest": "Interest:Mortgage", "Interest_Rate": "2.75", "Principal + Interest": "2570.94", "Type": "Mortgage"},
+
+{"Mapping": {"Date": "", "Account": "", "Description": "REINVESTMENT ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Apple Card", "Type": "Dividend"},
+{"Mapping": {"Date": "", "Account": "", "Description": "DIVIDEND RECEIVED ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Apple Card", "Type": "Dividend"},
+
+{"Mapping": {"Date": "", "Account": "", "Description": "DIRECT DEBIT APPLECARD ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Apple Card", "Type": "Assignment"},
+{"Mapping": {"Date": "", "Account": "", "Description": "DIRECT DEBIT CITI CARD ONLIPAYMENT", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Citi Costco Visa", "Type": "Assignment"},
+{"Mapping": {"Date": "", "Account": "", "Description": "DIRECT DEBIT Corp E Corp E-CHECK", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Taxes:DE", "Type": "Assignment"},
+
+{"Mapping": {"Date": "", "Account": "", "Description": "", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Uncategorized", "Type": "Assignment"}
+]
