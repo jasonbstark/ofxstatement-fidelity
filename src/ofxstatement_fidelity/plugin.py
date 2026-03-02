@@ -107,7 +107,7 @@ class FidelityCSVParser(AbstractStatementParser):
             invest_stmt_line.Amount = self.parse_decimal(line[QUANTITY])
 
         if line[PRICE]:
-            invest_stmt_line.Value = self.parse_decimal(line[PRICE])
+            invest_stmt_line.Price = self.parse_decimal(line[PRICE])
 
         if line[AMOUNT]:
             sign_amount = np.sign(Decimal(line[AMOUNT]))
@@ -128,6 +128,7 @@ class FidelityCSVParser(AbstractStatementParser):
                 pass
 
         invest_stmt_line = self.provide_pricing(invest_stmt_line)
+
         id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + f'{invest_stmt_line.Description}'
         id_trx = self.id_str_generate(id_string)
         invest_stmt_line.TransactionID = id_trx
@@ -136,14 +137,21 @@ class FidelityCSVParser(AbstractStatementParser):
 
         translation = self.matching_translation(invest_stmt_line)
         account = invest_stmt_line.Account
+        symbol = invest_stmt_line.Symbol
         if translation is not None:
             if translation["Type"] == "Transfer":
                 invest_stmt_line.Account = translation["Account"].replace("[Account]", account)
                 invest_stmt_line.Type = "Transfer"
                 invest_stmt_line.Status = "t"
+
             elif translation["Type"] == "Stock":
+                invest_stmt_line.Account = translation["Account"].replace("[Account]", account)
+                invest_stmt_line.Account_Fees = translation["Account_Fees"]
+                invest_stmt_line.Symbol = translation["Symbol"].replace("[Symbol]", symbol)
                 invest_stmt_line.Type = "Stock"
                 invest_stmt_line.Status = "s"
+                invest_stmt_lines = self.buildStockTransactions(invest_stmt_line)
+
             elif translation["Type"] == "Mortgage":
                 account_mortgage = translation["Account_Mortgage"]
                 account_escrow = translation["Account_Escrow"]
@@ -153,12 +161,15 @@ class FidelityCSVParser(AbstractStatementParser):
                 invest_stmt_line.Type = "Mortgage"
                 invest_stmt_line.Status = "m"
                 invest_stmt_lines = self.buildMortgageTransactions(invest_stmt_line, account_mortgage, account_escrow, account_interest, interest_rate, mortgage_principal_interest)
+
             elif translation["Type"] == "Dividend":
                 invest_stmt_line.Type = "Dividend"
                 invest_stmt_line.Status = "d"
+
             elif (translation["Type"] == "Assignment") and (translation["Account"] != "Uncategorized"):
                 invest_stmt_line.Type = "Assignment"
                 invest_stmt_line.Status = "c"
+
             elif (translation["Type"] == "Assignment") and (translation["Account"] == "Uncategorized"):
                 invest_stmt_line.Type = "Assignment"
                 invest_stmt_line.Status = "n"
@@ -167,6 +178,39 @@ class FidelityCSVParser(AbstractStatementParser):
             invest_stmt_line.Status = "n"
 
         self.statement.line_dict[self.freeze(invest_stmt_line)] = translation
+        return invest_stmt_lines
+
+    def buildStockTransactions(self, invest_stmt_line):
+        print(f"invest_stmt_line = \n{invest_stmt_line}\n")
+
+        invest_stmt_lines = []
+
+        id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.Description
+        id_trx = self.id_str_generate(id_string)
+        invest_stmt_line.TransactionID = id_trx
+
+        invest_stmt_line_account = InvestStatementLine()
+        invest_stmt_line_account.__dict__ = invest_stmt_line.__dict__.copy()
+        invest_stmt_line_account.Symbol = ""
+        invest_stmt_line_account.Price = Decimal(1)
+        invest_stmt_line_account.Amount = invest_stmt_line_account.Value
+        invest_stmt_lines.append(invest_stmt_line_account)
+
+        invest_stmt_line_stock = InvestStatementLine()
+        invest_stmt_line_stock.__dict__ = invest_stmt_line.__dict__.copy()
+        invest_stmt_line_stock.Account = invest_stmt_line_stock.Account + ":" + invest_stmt_line_stock.Symbol
+        invest_stmt_line_stock.Value = Decimal(invest_stmt_line_stock.Amount) * Decimal(invest_stmt_line_stock.Price)
+        invest_stmt_lines.append(invest_stmt_line_stock)
+
+        if hasattr(invest_stmt_line, "fees") and (invest_stmt_line.fees is not None):
+            invest_stmt_line_fees = InvestStatementLine()
+            invest_stmt_line_fees.__dict__ = invest_stmt_line.__dict__.copy()
+            invest_stmt_line_fees.Account = invest_stmt_line_fees.Account_Fees.replace("[Account]",  invest_stmt_line.Account)
+            invest_stmt_line_fees.Price = Decimal(1)
+            invest_stmt_line_fees.Amount = Decimal(invest_stmt_line.fees)
+            invest_stmt_line_fees.Value = Decimal(invest_stmt_line.fees)
+            invest_stmt_lines.append(invest_stmt_line_fees)
+
         return invest_stmt_lines
 
     def buildMortgageTransactions(self, invest_stmt_line, account_mortgage, account_escrow, account_interest, interest_rate, mortgage_principal_interest):
@@ -180,7 +224,6 @@ class FidelityCSVParser(AbstractStatementParser):
 
         id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.Description
         id_trx = self.id_str_generate(id_string)
-
         invest_stmt_line.TransactionID = id_trx
 
         mortgage_payment = -Decimal(invest_stmt_line.Value).quantize(TWOPLACES)
@@ -259,7 +302,6 @@ class FidelityCSVParser(AbstractStatementParser):
 
         for csv_line in csv_in:
             invest_stmt_lines = self.parse_record(csv_line)
-
             if invest_stmt_lines:
                 self.statement.invest_lines.extend(invest_stmt_lines)
 
@@ -396,29 +438,29 @@ class FidelityCSVParser(AbstractStatementParser):
             elif translation["Type"] == "Assignment":
                 self.assignments.append(translation)
 
-    def buildStockTransactions(self, invest_stmt_line):
-        invest_lines = []
-        
-        id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
-        id_trx = self.id_str_generate(id_string)
-
-        invest_stmt_line_stock = InvestStatementLine()
-        invest_stmt_line_stock.__dict__ = invest_stmt_line.__dict__.copy()
-
-        account = self.stocks_dict[invest_stmt_line_stock.Account][invest_stmt_line_stock.TransactionCommodity]
-        invest_stmt_line_stock.Account = account
-        invest_stmt_line_stock.Value = -invest_stmt_line.Value
-        invest_stmt_line_stock.TransactionID = id_trx
-
-        invest_stmt_line.Price = Decimal(1)
-        invest_stmt_line.Value = invest_stmt_line.Value
-        invest_stmt_line.TransactionID = id_trx        
-
-        invest_lines.append(invest_stmt_line)
-        invest_lines.append(invest_stmt_line_stock)
-
-        return invest_lines
-        
+    # def buildStockTransactions(self, invest_stmt_line):
+    #     invest_lines = []
+    #
+    #     id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
+    #     id_trx = self.id_str_generate(id_string)
+    #
+    #     invest_stmt_line_stock = InvestStatementLine()
+    #     invest_stmt_line_stock.__dict__ = invest_stmt_line.__dict__.copy()
+    #
+    #     account = self.stocks_dict[invest_stmt_line_stock.Account][invest_stmt_line_stock.TransactionCommodity]
+    #     invest_stmt_line_stock.Account = account
+    #     invest_stmt_line_stock.Value = -invest_stmt_line.Value
+    #     invest_stmt_line_stock.TransactionID = id_trx
+    #
+    #     invest_stmt_line.Price = Decimal(1)
+    #     invest_stmt_line.Value = invest_stmt_line.Value
+    #     invest_stmt_line.TransactionID = id_trx
+    #
+    #     invest_lines.append(invest_stmt_line)
+    #     invest_lines.append(invest_stmt_line_stock)
+    #
+    #     return invest_lines
+    #
     def provide_pricing(self, invest_line):
         if invest_line.Price is None:
             invest_line.Price = Decimal(1)

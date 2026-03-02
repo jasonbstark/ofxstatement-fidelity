@@ -6,8 +6,8 @@
 {"Mapping": {"Date": "", "Account": "", "Description": "INTEREST EARNED CASH [(]315994103[)]", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer"},
 {"Mapping": {"Date": "", "Account": "", "Description": " VS ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer"},
 
-{"Mapping": {"Date": "", "Account": "", "Description": "YOU SOLD ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]:[Symbol]", "Type": "Stock"},
-{"Mapping": {"Date": "", "Account": "", "Description": "YOU BOUGHT ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]:[Symbol]", "Type": "Stock"},
+{"Mapping": {"Date": "", "Account": "", "Description": "YOU SOLD ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Symbol": "[Symbol]", "Type": "Stock", "Account_Fees": "Expenses:Commissions:[Account]"},
+{"Mapping": {"Date": "", "Account": "", "Description": "YOU BOUGHT ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Symbol": "[Symbol]", "Type": "Stock", "Account_Fees": "Expenses:Commissions:[Account]"},
 
 {"Mapping": {"Date": "", "Account": "", "Description": "DIRECT DEBIT FREEDOM MTG PYMTS", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account_Mortgage": "Real Estate:Mortgage", "Account_Escrow": "Real Estate:Escrow", "Account_Interest": "Interest:Mortgage", "Interest_Rate": "2.75", "Principal + Interest": "2570.94", "Type": "Mortgage"},
 
