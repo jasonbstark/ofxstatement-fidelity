@@ -138,6 +138,7 @@ class FidelityCSVParser(AbstractStatementParser):
         translation = self.matching_translation(invest_stmt_line)
         account = invest_stmt_line.Account
         symbol = invest_stmt_line.Symbol
+
         if translation is not None:
             if translation["Type"] == "Transfer":
                 invest_stmt_line.Account = translation["Account"].replace("[Account]", account)
@@ -162,17 +163,16 @@ class FidelityCSVParser(AbstractStatementParser):
                 invest_stmt_line.Status = "m"
                 invest_stmt_lines = self.buildMortgageTransactions(invest_stmt_line, account_mortgage, account_escrow, account_interest, interest_rate, mortgage_principal_interest)
 
-            elif translation["Type"] == "Dividend":
-                invest_stmt_line.Type = "Dividend"
-                invest_stmt_line.Status = "d"
-
             elif (translation["Type"] == "Assignment") and (translation["Account"] != "Uncategorized"):
                 invest_stmt_line.Type = "Assignment"
                 invest_stmt_line.Status = "c"
+                invest_stmt_lines = self.buildAssignmentTransactions(invest_stmt_line, translation["Account"])
 
             elif (translation["Type"] == "Assignment") and (translation["Account"] == "Uncategorized"):
                 invest_stmt_line.Type = "Assignment"
                 invest_stmt_line.Status = "n"
+                target_account = translation["Account"]
+                invest_stmt_lines = self.buildAssignmentTransactions(invest_stmt_line, target_account)
         else:
             invest_stmt_line.Type = "None"
             invest_stmt_line.Status = "n"
@@ -180,9 +180,31 @@ class FidelityCSVParser(AbstractStatementParser):
         self.statement.line_dict[self.freeze(invest_stmt_line)] = translation
         return invest_stmt_lines
 
-    def buildStockTransactions(self, invest_stmt_line):
-        print(f"invest_stmt_line = \n{invest_stmt_line}\n")
+    def buildAssignmentTransactions(self, invest_stmt_line, account_target):
+        invest_stmt_lines = []
 
+        id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.Description
+        id_trx = self.id_str_generate(id_string)
+        invest_stmt_line.TransactionID = id_trx
+
+        invest_stmt_line_account = InvestStatementLine()
+        invest_stmt_line_account.__dict__ = invest_stmt_line.__dict__.copy()
+        invest_stmt_line_account.Symbol = ""
+        invest_stmt_line_account.Price = Decimal(1)
+        invest_stmt_line_account.Amount = invest_stmt_line_account.Value
+        invest_stmt_lines.append(invest_stmt_line_account)
+
+        invest_stmt_line_assignment = InvestStatementLine()
+        invest_stmt_line_assignment.__dict__ = invest_stmt_line.__dict__.copy()
+        invest_stmt_line_assignment.Account = account_target.replace("[Account]",  invest_stmt_line.Account).replace("[Symbol]",  invest_stmt_line.Symbol)
+        invest_stmt_line_assignment.Price = Decimal(1)
+        invest_stmt_line_assignment.Amount = -invest_stmt_line.Value
+        invest_stmt_line_assignment.Value = -invest_stmt_line.Value
+        invest_stmt_lines.append(invest_stmt_line_assignment)
+
+        return invest_stmt_lines
+
+    def buildStockTransactions(self, invest_stmt_line):
         invest_stmt_lines = []
 
         id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.Description
@@ -199,16 +221,24 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_stmt_line_stock = InvestStatementLine()
         invest_stmt_line_stock.__dict__ = invest_stmt_line.__dict__.copy()
         invest_stmt_line_stock.Account = invest_stmt_line_stock.Account + ":" + invest_stmt_line_stock.Symbol
-        invest_stmt_line_stock.Value = Decimal(invest_stmt_line_stock.Amount) * Decimal(invest_stmt_line_stock.Price)
+        invest_stmt_line_stock.Value = (Decimal(invest_stmt_line_stock.Amount) * Decimal(invest_stmt_line_stock.Price)).quantize(TWOPLACES)
+
+        has_fees = hasattr(invest_stmt_line, "fees") and (invest_stmt_line.fees is not None)
+        if has_fees:
+            invest_stmt_line_stock.Price = Decimal((Decimal(invest_stmt_line_stock.Value) - Decimal(invest_stmt_line.fees)) / Decimal(invest_stmt_line_stock.Amount)).quantize(TWOPLACES)
+        else:
+            invest_stmt_line_stock.Price = (Decimal(invest_stmt_line_stock.Value) / Decimal(invest_stmt_line_stock.Amount)).quantize(TWOPLACES)
+        fees = -(Decimal(invest_stmt_line_stock.Price) * Decimal(invest_stmt_line_stock.Amount) + Decimal(invest_stmt_line_account.Value)).quantize(TWOPLACES)
+
         invest_stmt_lines.append(invest_stmt_line_stock)
 
-        if hasattr(invest_stmt_line, "fees") and (invest_stmt_line.fees is not None):
+        if fees != Decimal(0):
             invest_stmt_line_fees = InvestStatementLine()
             invest_stmt_line_fees.__dict__ = invest_stmt_line.__dict__.copy()
             invest_stmt_line_fees.Account = invest_stmt_line_fees.Account_Fees.replace("[Account]",  invest_stmt_line.Account)
             invest_stmt_line_fees.Price = Decimal(1)
-            invest_stmt_line_fees.Amount = Decimal(invest_stmt_line.fees)
-            invest_stmt_line_fees.Value = Decimal(invest_stmt_line.fees)
+            invest_stmt_line_fees.Amount = fees
+            invest_stmt_line_fees.Value = fees
             invest_stmt_lines.append(invest_stmt_line_fees)
 
         return invest_stmt_lines
@@ -341,6 +371,7 @@ class FidelityCSVParser(AbstractStatementParser):
                 if date_initial is None:
                     date_initial = date
                 csv_in.append(csv_line)
+
             date_final = date
 
             if date_initial > date_final:
@@ -348,24 +379,25 @@ class FidelityCSVParser(AbstractStatementParser):
         return csv_in
 
     def process_transfers(self):
-        df_types_transfer = self.df_types["Transfer"][::-1]
-        for index, row in df_types_transfer.iterrows():
-            if row['Type'] == "Transfer":
-                mask_date = (self.df_types["Transfer"]['Date'] >= row['Date'] - timedelta(days=self.match_lookback_days)) \
-                    & (self.df_types["Transfer"]['Date'] <= row['Date'] + timedelta(days=self.match_lookforward_days))
-                mask_amount = (self.df_types["Transfer"]['Value'] == -row['Value'])
+        if "Transfer" in self.df_types.keys():
+            df_types_transfer = self.df_types["Transfer"][::-1]
+            for index, row in df_types_transfer.iterrows():
+                if row['Type'] == "Transfer":
+                    mask_date = (self.df_types["Transfer"]['Date'] >= row['Date'] - timedelta(days=self.match_lookback_days)) \
+                        & (self.df_types["Transfer"]['Date'] <= row['Date'] + timedelta(days=self.match_lookforward_days))
+                    mask_amount = (self.df_types["Transfer"]['Value'] == -row['Value'])
 
-                df_match_date = self.df_types["Transfer"][mask_date]
-                df_match = self.df_types["Transfer"][mask_date & mask_amount]
+                    df_match_date = self.df_types["Transfer"][mask_date]
+                    df_match = self.df_types["Transfer"][mask_date & mask_amount]
 
-                df_match_length = df_match.shape[0]
-                if df_match_length == 1:
-                    index_match = df_match.index[0]
+                    df_match_length = df_match.shape[0]
+                    if df_match_length == 1:
+                        index_match = df_match.index[0]
 
-                    self.df_types["Transfer"].loc[index, 'TransactionID'] = self.df_types["Transfer"].loc[index_match, 'TransactionID']
-                    self.df_statement.loc[index, 'TransactionID'] = self.df_types["Transfer"].loc[index_match, 'TransactionID']
-                    self.df_types["Transfer"].loc[index, 'Description'] = self.df_types["Transfer"].loc[index_match, 'Description']
-                    self.df_statement.loc[index, 'Description'] = self.df_types["Transfer"].loc[index_match, 'Description']
+                        self.df_types["Transfer"].loc[index, 'TransactionID'] = self.df_types["Transfer"].loc[index_match, 'TransactionID']
+                        self.df_statement.loc[index, 'TransactionID'] = self.df_types["Transfer"].loc[index_match, 'TransactionID']
+                        self.df_types["Transfer"].loc[index, 'Description'] = self.df_types["Transfer"].loc[index_match, 'Description']
+                        self.df_statement.loc[index, 'Description'] = self.df_types["Transfer"].loc[index_match, 'Description']
         return
 
     def statement_to_df(self):
