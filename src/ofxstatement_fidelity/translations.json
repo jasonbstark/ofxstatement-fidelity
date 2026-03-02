@@ -34,5 +34,6 @@
 {"Mapping": {"Date": "", "Account": "", "Description": "STATE TAX W/H NJ STAT WTH", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Taxes:NJ", "Type": "Assignment"},
 {"Mapping": {"Date": "", "Account": "", "Description": "DIRECT DEBIT NEW JERSEY TGI", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Taxes:NJ", "Type": "Assignment"},
 {"Mapping": {"Date": "", "Account": "", "Description": "DIRECT DEBIT Holmdel Townsh", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Utilities:Sewer", "Type": "Assignment"},
-{"Mapping": {"Date": "", "Account": "", "Description": "BILL PAYMENT CJWA", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Personal:JBS:Woodworking", "Type": "Assignment"}
+{"Mapping": {"Date": "", "Account": "", "Description": "BILL PAYMENT CJWA", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Personal:JBS:Woodworking", "Type": "Assignment"},
+{"Mapping": {"Date": "", "Account": "", "Description": "", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "", "Type": "Assignment"}
 ]
