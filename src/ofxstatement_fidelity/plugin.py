@@ -142,6 +142,10 @@ class FidelityCSVParser(AbstractStatementParser):
         if translation is not None:
             if translation["Type"] == "Transfer":
                 invest_stmt_line.Account = translation["Account"].replace("[Account]", account)
+                invest_stmt_line.Value = Decimal(invest_stmt_line.Value).quantize(TWOPLACES)
+                invest_stmt_line.Amount = (Decimal(invest_stmt_line.Value) / Decimal(invest_stmt_line.Price)).quantize(TWOPLACES)
+                if "Description" in translation.keys():
+                    invest_stmt_line.Description = translation["Description"].replace("[Description]", invest_stmt_line.Description).replace("[Account]", invest_stmt_line.Account)
                 invest_stmt_line.Type = "Transfer"
                 invest_stmt_line.Status = "t"
 
@@ -380,9 +384,15 @@ class FidelityCSVParser(AbstractStatementParser):
 
     def process_transfers(self):
         if "Transfer" in self.df_types.keys():
-            df_types_transfer = self.df_types["Transfer"][::-1]
+            df_types_transfer = self.df_types["Transfer"]
+            # for index, row in df_types_transfer.iterrows():
             for index, row in df_types_transfer.iterrows():
                 if row['Type'] == "Transfer":
+                    # print(f"\nself.df_statement.loc[index] = \n{self.df_statement.loc[index]}\n")
+                    # self.df_types["Transfer"].loc[index, 'Amount'] = (Decimal(self.df_types["Transfer"].loc[index, 'Value']) / Decimal(self.df_types["Transfer"].loc[index, 'Price'])).quantize(TWOPLACES)
+                    # print(f"\nself.df_statement.loc[index] = \n{self.df_statement.loc[index]}\n")
+                    # self.df_statement.loc[index, 'Amount'] = (Decimal(self.df_statement.loc[index, 'Value']) / Decimal(self.df_statement.loc[index, 'Price'])).quantize(TWOPLACES)
+
                     mask_date = (self.df_types["Transfer"]['Date'] >= row['Date'] - timedelta(days=self.match_lookback_days)) \
                         & (self.df_types["Transfer"]['Date'] <= row['Date'] + timedelta(days=self.match_lookforward_days))
                     mask_amount = (self.df_types["Transfer"]['Value'] == -row['Value'])
@@ -393,11 +403,15 @@ class FidelityCSVParser(AbstractStatementParser):
                     df_match_length = df_match.shape[0]
                     if df_match_length == 1:
                         index_match = df_match.index[0]
+                        
+                        self.df_types["Transfer"].loc[index_match, 'TransactionID'] = self.df_types["Transfer"].loc[index, 'TransactionID']
+                        self.df_statement.loc[index_match, 'TransactionID'] = self.df_types["Transfer"].loc[index, 'TransactionID']
 
-                        self.df_types["Transfer"].loc[index, 'TransactionID'] = self.df_types["Transfer"].loc[index_match, 'TransactionID']
-                        self.df_statement.loc[index, 'TransactionID'] = self.df_types["Transfer"].loc[index_match, 'TransactionID']
-                        self.df_types["Transfer"].loc[index, 'Description'] = self.df_types["Transfer"].loc[index_match, 'Description']
-                        self.df_statement.loc[index, 'Description'] = self.df_types["Transfer"].loc[index_match, 'Description']
+                        self.df_types["Transfer"].loc[index_match, 'Description'] = self.df_types["Transfer"].loc[index, 'Description']
+                        self.df_statement.loc[index_match, 'Description'] = self.df_types["Transfer"].loc[index, 'Description']
+                        
+                        # print(f"self.df_statement.loc[index] = \n{self.df_statement.loc[index]}\n")
+                        # print(f"self.df_statement.loc[index_match] = \n{self.df_statement.loc[index_match]}\n")
         return
 
     def statement_to_df(self):

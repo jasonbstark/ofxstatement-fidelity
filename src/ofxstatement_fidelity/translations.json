@@ -1,6 +1,6 @@
 [
-{"Mapping": {"Date": "", "Account": "", "Description": "REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer"},
-{"Mapping": {"Date": "", "Account": "", "Description": "DIVIDEND RECEIVED FIDELITY GOVERNMENT CASH RESERVES", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer"},
+{"Mapping": {"Date": "", "Account": "", "Description": "REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Income:Dividends:[Account]:FDRXX", "Type": "Transfer", "Description": "[Description] [Account]"},
+{"Mapping": {"Date": "", "Account": "", "Description": "DIVIDEND RECEIVED FIDELITY GOVERNMENT CASH RESERVES", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer", "Description": "[Description] [Account]"},
 {"Mapping": {"Date": "", "Account": "", "Description": "REINVESTMENT CASH [(]315994103[)]", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Income:Dividends:[Account]:FDRXX", "Type": "Transfer"},
 {"Mapping": {"Date": "", "Account": "", "Description": "INTEREST EARNED CASH [(]315994103[)]", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer"},
 {"Mapping": {"Date": "", "Account": "", "Description": " VS ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer"},
