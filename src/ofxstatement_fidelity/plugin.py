@@ -3,7 +3,7 @@ import re
 import sys
 from datetime import datetime, date, time, timedelta
 from typing import Dict, Optional, Any, TextIO
-from os import path
+import os
 from pathlib import Path
 from json import load as jsonload
 import hashlib
@@ -388,10 +388,6 @@ class FidelityCSVParser(AbstractStatementParser):
             # for index, row in df_types_transfer.iterrows():
             for index, row in df_types_transfer.iterrows():
                 if row['Type'] == "Transfer":
-                    # print(f"\nself.df_statement.loc[index] = \n{self.df_statement.loc[index]}\n")
-                    # self.df_types["Transfer"].loc[index, 'Amount'] = (Decimal(self.df_types["Transfer"].loc[index, 'Value']) / Decimal(self.df_types["Transfer"].loc[index, 'Price'])).quantize(TWOPLACES)
-                    # print(f"\nself.df_statement.loc[index] = \n{self.df_statement.loc[index]}\n")
-                    # self.df_statement.loc[index, 'Amount'] = (Decimal(self.df_statement.loc[index, 'Value']) / Decimal(self.df_statement.loc[index, 'Price'])).quantize(TWOPLACES)
 
                     mask_date = (self.df_types["Transfer"]['Date'] >= row['Date'] - timedelta(days=self.match_lookback_days)) \
                         & (self.df_types["Transfer"]['Date'] <= row['Date'] + timedelta(days=self.match_lookforward_days))
@@ -408,10 +404,7 @@ class FidelityCSVParser(AbstractStatementParser):
                         self.df_statement.loc[index_match, 'TransactionID'] = self.df_types["Transfer"].loc[index, 'TransactionID']
 
                         self.df_types["Transfer"].loc[index_match, 'Description'] = self.df_types["Transfer"].loc[index, 'Description']
-                        self.df_statement.loc[index_match, 'Description'] = self.df_types["Transfer"].loc[index, 'Description']
-                        
-                        # print(f"self.df_statement.loc[index] = \n{self.df_statement.loc[index]}\n")
-                        # print(f"self.df_statement.loc[index_match] = \n{self.df_statement.loc[index_match]}\n")
+                        self.df_statement.loc[index_match, 'Description'] = self.df_types["Transfer"].loc[index, 'Description']                        
         return
 
     def statement_to_df(self):
@@ -484,29 +477,6 @@ class FidelityCSVParser(AbstractStatementParser):
             elif translation["Type"] == "Assignment":
                 self.assignments.append(translation)
 
-    # def buildStockTransactions(self, invest_stmt_line):
-    #     invest_lines = []
-    #
-    #     id_string = f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")}, ' + invest_stmt_line.Account + ", " + invest_stmt_line.trntype + ", " + invest_stmt_line.trntype_detailed
-    #     id_trx = self.id_str_generate(id_string)
-    #
-    #     invest_stmt_line_stock = InvestStatementLine()
-    #     invest_stmt_line_stock.__dict__ = invest_stmt_line.__dict__.copy()
-    #
-    #     account = self.stocks_dict[invest_stmt_line_stock.Account][invest_stmt_line_stock.TransactionCommodity]
-    #     invest_stmt_line_stock.Account = account
-    #     invest_stmt_line_stock.Value = -invest_stmt_line.Value
-    #     invest_stmt_line_stock.TransactionID = id_trx
-    #
-    #     invest_stmt_line.Price = Decimal(1)
-    #     invest_stmt_line.Value = invest_stmt_line.Value
-    #     invest_stmt_line.TransactionID = id_trx
-    #
-    #     invest_lines.append(invest_stmt_line)
-    #     invest_lines.append(invest_stmt_line_stock)
-    #
-    #     return invest_lines
-    #
     def provide_pricing(self, invest_line):
         if invest_line.Price is None:
             invest_line.Price = Decimal(1)
@@ -521,6 +491,11 @@ class FidelityCSVParser(AbstractStatementParser):
             book = Book(bookname)
         except OSError as err:
             sys.exit(err)
+
+        if os.path.isfile(bookname):
+            pathBook = Path(bookname)
+            pathBook.unlink()
+            book_exists = os.path.isfile(bookname)
 
         return book
 
