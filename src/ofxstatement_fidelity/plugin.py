@@ -36,6 +36,7 @@ class FidelityCSVParser(AbstractStatementParser):
         super().__init__()
         self.filename = filename
         self.statement = Statement()
+        self.statement.type = 'Fidelity'
         self.statement.line_dict = {}
         self.statement.broker_id = "Fidelity"
         self.statement.currency = "USD"
