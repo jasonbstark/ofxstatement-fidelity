@@ -1,5 +1,6 @@
 [
-{"Mapping": {"Date": "", "Account": "", "Description": "REINVESTMENT FIDELITY GOVERNMENT MONEY MARKET (SPAXX)", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Income:Dividends:[Account]:SPAXX", "Type": "Transfer", "Description": "[Description] [Account]"},
+{"Mapping": {"Date": "", "Account": "", "Description": "REINVESTMENT FIDELITY GOVERNMENT MONEY MARKET [(]SPAXX[)]", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Income:Dividends:[Account]:SPAXX", "Type": "Transfer", "Description": "[Description] [Account]"},
+{"Mapping": {"Date": "", "Account": "", "Description": "DIVIDEND RECEIVED FIDELITY GOVERNMENT MONEY MARKET [(]SPAXX[)]", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer", "Description": "[Description] [Account]"},
 {"Mapping": {"Date": "", "Account": "", "Description": "REINVESTMENT FIDELITY GOVERNMENT CASH RESERVES", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Income:Dividends:[Account]:FDRXX", "Type": "Transfer", "Description": "[Description] [Account]"},
 {"Mapping": {"Date": "", "Account": "", "Description": "DIVIDEND RECEIVED FIDELITY GOVERNMENT CASH RESERVES", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Type": "Transfer", "Description": "[Description] [Account]"},
 {"Mapping": {"Date": "", "Account": "", "Description": "REINVESTMENT CASH [(]315994103[)]", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Income:Dividends:[Account]:FDRXX", "Type": "Transfer"},
@@ -10,7 +11,7 @@
 {"Mapping": {"Date": "", "Account": "", "Description": "YOU BOUGHT ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Symbol": "[Symbol]", "Type": "Stock", "Account_Fees": "Expenses:Commissions:[Account]"},
 {"Mapping": {"Date": "", "Account": "", "Description": "REINVESTMENT ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "[Account]", "Symbol": "[Symbol]", "Type": "Stock", "Account_Fees": "Expenses:Commissions:[Account]"},
 
-{"Mapping": {"Date": "", "Account": "", "Description": "DIRECT DEBIT FREEDOM MTG PYMTS", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account_Mortgage": "Real Estate:Mortgage", "Account_Escrow": "Real Estate:Escrow", "Account_Interest": "Interest:Mortgage", "Interest_Rate": "2.75", "Principal + Interest": "2570.94", "Type": "Mortgage"},
+{"Mapping": {"Date": "", "Account": "", "Description": "DIRECT DEBIT FREEDOM MTG PYMTS", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account_Mortgage": "Real Estate:Mortgage", "Account_Escrow": "Real Estate:Escrow", "Account_Interest": "Interest:Mortgage", "Interest_Rate": "2.75", "Principal + Interest": "2570.96", "Type": "Mortgage"},
 
 {"Mapping": {"Date": "", "Account": "", "Description": "DIVIDEND RECEIVED ", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Income:Dividends:[Account]:[Symbol]", "Type": "Assignment"},
 {"Mapping": {"Date": "", "Account": "", "Description": "DIRECT DEBIT APPLECARD", "Symbol": "", "Amount": "", "Price": "", "Value": ""}, "Account": "Apple Card", "Type": "Assignment"},
