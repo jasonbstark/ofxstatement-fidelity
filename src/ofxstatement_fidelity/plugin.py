@@ -141,7 +141,11 @@ class FidelityCSVParser(AbstractStatementParser):
         symbol = invest_stmt_line.Symbol
 
         if translation is not None:
+            # if "SPAXX" in invest_stmt_line.Description:
+                # print(f"plugin.parse_record.SPAXX:  translation = \n{translation}")
+                # print(f"plugin.parse_record.SPAXX:  invest_stmt_line = \n{invest_stmt_line}\n")
             if translation["Type"] == "Transfer":
+                # print(f"plugin.parse_record.Transfer:  invest_stmt_line = \n{invest_stmt_line}\n")
                 invest_stmt_line.Account = translation["Account"].replace("[Account]", account)
                 invest_stmt_line.Value = Decimal(invest_stmt_line.Value).quantize(TWOPLACES)
                 invest_stmt_line.Amount = (Decimal(invest_stmt_line.Value) / Decimal(invest_stmt_line.Price)).quantize(TWOPLACES)
@@ -151,6 +155,7 @@ class FidelityCSVParser(AbstractStatementParser):
                 invest_stmt_line.Status = "t"
 
             elif translation["Type"] == "Stock":
+                # print(f"plugin.parse_record.Stock:  invest_stmt_line = \n{invest_stmt_line}\n")
                 invest_stmt_line.Account = translation["Account"].replace("[Account]", account)
                 invest_stmt_line.Account_Fees = translation["Account_Fees"]
                 invest_stmt_line.Symbol = translation["Symbol"].replace("[Symbol]", symbol)
@@ -159,6 +164,8 @@ class FidelityCSVParser(AbstractStatementParser):
                 invest_stmt_lines = self.buildStockTransactions(invest_stmt_line)
 
             elif translation["Type"] == "Mortgage":
+                # print(f"plugin.parse_record.Mortgage:  translation = \n{translation}")
+                # print(f"plugin.parse_record.Mortgage:  invest_stmt_line = \n{invest_stmt_line}\n")
                 account_mortgage = translation["Account_Mortgage"]
                 account_escrow = translation["Account_Escrow"]
                 account_interest = translation["Account_Interest"]
