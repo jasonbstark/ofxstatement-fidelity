@@ -235,13 +235,7 @@ class FidelityCSVParser(AbstractStatementParser):
         invest_stmt_line_stock.Account = invest_stmt_line_stock.Account + ":" + invest_stmt_line_stock.Symbol
         invest_stmt_line_stock.Value = (Decimal(invest_stmt_line_stock.Amount) * Decimal(invest_stmt_line_stock.Price)).quantize(TWOPLACES)
 
-        has_fees = hasattr(invest_stmt_line, "fees") and (invest_stmt_line.fees is not None)
-        if has_fees:
-            invest_stmt_line_stock.Price = Decimal((Decimal(invest_stmt_line_stock.Value) - Decimal(invest_stmt_line.fees)) / Decimal(invest_stmt_line_stock.Amount)).quantize(TWOPLACES)
-        else:
-            invest_stmt_line_stock.Price = (Decimal(invest_stmt_line_stock.Value) / Decimal(invest_stmt_line_stock.Amount)).quantize(TWOPLACES)
         fees = -(Decimal(invest_stmt_line_stock.Price) * Decimal(invest_stmt_line_stock.Amount) + Decimal(invest_stmt_line_account.Value)).quantize(TWOPLACES)
-
         invest_stmt_lines.append(invest_stmt_line_stock)
 
         if fees != Decimal(0):
