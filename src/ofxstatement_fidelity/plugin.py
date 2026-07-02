@@ -19,6 +19,8 @@ from ofxstatement.statement import Statement, InvestStatementLine, StatementLine
 
 from gncxml_integration import Book, copy_gnucash_accounts
 
+pathTranslations = Path("/Volumes/Nextcloud Data/Nextcloud/Jason's documents/computer/repo/ofxstatement-fidelity/src/ofxstatement_fidelity/translations.json")
+
 class FidelityPlugin(Plugin):
     """Fidelity CSV plugin for ofxstatement"""
 
@@ -141,11 +143,7 @@ class FidelityCSVParser(AbstractStatementParser):
         symbol = invest_stmt_line.Symbol
 
         if translation is not None:
-            # if "SPAXX" in invest_stmt_line.Description:
-                # print(f"plugin.parse_record.SPAXX:  translation = \n{translation}")
-                # print(f"plugin.parse_record.SPAXX:  invest_stmt_line = \n{invest_stmt_line}\n")
             if translation["Type"] == "Transfer":
-                # print(f"plugin.parse_record.Transfer:  invest_stmt_line = \n{invest_stmt_line}\n")
                 invest_stmt_line.Account = translation["Account"].replace("[Account]", account)
                 invest_stmt_line.Value = Decimal(invest_stmt_line.Value).quantize(TWOPLACES)
                 invest_stmt_line.Amount = (Decimal(invest_stmt_line.Value) / Decimal(invest_stmt_line.Price)).quantize(TWOPLACES)
@@ -155,7 +153,6 @@ class FidelityCSVParser(AbstractStatementParser):
                 invest_stmt_line.Status = "t"
 
             elif translation["Type"] == "Stock":
-                # print(f"plugin.parse_record.Stock:  invest_stmt_line = \n{invest_stmt_line}\n")
                 invest_stmt_line.Account = translation["Account"].replace("[Account]", account)
                 invest_stmt_line.Account_Fees = translation["Account_Fees"]
                 invest_stmt_line.Symbol = translation["Symbol"].replace("[Symbol]", symbol)
@@ -164,8 +161,6 @@ class FidelityCSVParser(AbstractStatementParser):
                 invest_stmt_lines = self.buildStockTransactions(invest_stmt_line)
 
             elif translation["Type"] == "Mortgage":
-                # print(f"plugin.parse_record.Mortgage:  translation = \n{translation}")
-                # print(f"plugin.parse_record.Mortgage:  invest_stmt_line = \n{invest_stmt_line}\n")
                 account_mortgage = translation["Account_Mortgage"]
                 account_escrow = translation["Account_Escrow"]
                 account_interest = translation["Account_Interest"]
@@ -373,13 +368,17 @@ class FidelityCSVParser(AbstractStatementParser):
                 try:
                     date = datetime.strptime(csv_line[0], "%m/%d/%Y")
                 except ValueError:
-                    continue
+                    try:
+                        date = datetime.strptime(csv_line[0], "%m-%d-%Y")
+                        date_str = datetime.strftime(date,"%m/%d/%Y")
+                        csv_line[0] = date_str
+                    except ValueError:
+                        continue
                 if date_initial is None:
                     date_initial = date
                 csv_in.append(csv_line)
 
             date_final = date
-
             if date_initial > date_final:
                 csv_in.reverse()
         return csv_in
@@ -387,7 +386,6 @@ class FidelityCSVParser(AbstractStatementParser):
     def process_transfers(self):
         if "Transfer" in self.df_types.keys():
             df_types_transfer = self.df_types["Transfer"]
-            # for index, row in df_types_transfer.iterrows():
             for index, row in df_types_transfer.iterrows():
                 if row['Type'] == "Transfer":
 
@@ -424,7 +422,6 @@ class FidelityCSVParser(AbstractStatementParser):
                 df_statement[col] = pd.Series()
 
         statement_cols = df_statement.columns
-        # newcols = [col for col in cols if col in statement_cols] + [col for col in statement_cols if col not in cols]
         newcols = [col for col in cols if col in statement_cols]
         df_statement = df_statement[newcols]
         self.df_statement = df_statement
@@ -452,7 +449,7 @@ class FidelityCSVParser(AbstractStatementParser):
 
     def get_translations(self):
         """Returns list of dictionaries with translations.json data"""
-        pathTranslations = Path("/Volumes/Nextcloud Data/Nextcloud/Jason's documents/computer/repo/ofxstatement-fidelity/src/ofxstatement_fidelity/translations.json")
+        # pathTranslations = Path("/Volumes/Nextcloud Data/Nextcloud/Jason's documents/computer/repo/ofxstatement-fidelity/src/ofxstatement_fidelity/translations.json")
         self.pathTranslations = pathTranslations
         with pathTranslations.open() as translationjson:
             self.translations = jsonload(translationjson)
